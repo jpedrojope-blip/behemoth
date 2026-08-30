@@ -141,3 +141,15 @@ a{color:inherit;text-decoration:none}
 .switch.on{background:var(--blue)}
 .switch.on i{transform:translateX(18px)}
 .switch:disabled{opacity:.5}
+
+/* Behemoth visual system: navy workspace, bright blue actions, dashboard panels. */
+:root{--navy:#071a3b;--panel:#0d2349;--blue:#1768f5}
+.sidebar{width:280px;background:linear-gradient(180deg,#071a3b,#0b2550);border-right:0;color:#fff}
+.main-content{margin-left:280px;width:calc(100% - 280px)}
+.brand{color:#fff;letter-spacing:-.04em}.brand-mark{background:#1768f5;box-shadow:0 0 0 5px #1768f52b;border-radius:10px}
+.workspace,.profile{border-color:#ffffff1a;color:#fff;background:#ffffff0b}.workspace small,.profile small{color:#9eb0ce}.avatar{border-radius:50%;background:#2e6df6;color:#fff}
+.nav-item{color:#c5d0e4;padding:12px}.nav-item.active{background:linear-gradient(90deg,#1768f5,#2d7aff);color:#fff;box-shadow:0 8px 18px #1768f544}.nav-item:hover{background:#ffffff12}
+.kpi-card,.kpi-card.blue,.kpi-card.cream,.kpi-card.lavender,.kpi-card.mint{background:var(--panel);color:#fff;box-shadow:0 8px 18px #0b244b14}.kpi-card.cream .change{color:#f5b934!important}.kpi-card.lavender .change{color:#a77bff!important}.kpi-card.mint .change{color:#43d2a1!important}
+.card{background:var(--panel);border-color:#173762;color:#fff;box-shadow:0 8px 18px #0b244b12}.card h2{color:#fff}.card-kicker{color:#9eb0ce}
+.insight-body{background:#172f5d}.insight-body p,.agenda-info span{color:#b9c7dc}.quick-grid a{border-color:#29456e;color:#fff;background:#102953}
+@media(max-width:900px){.main-content{margin-left:0;width:100%}}
