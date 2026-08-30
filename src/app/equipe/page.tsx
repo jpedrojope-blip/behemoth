@@ -28,6 +28,7 @@ const EMPTY_FORM = {
   performance: "",
   target: "",
   monthlyCost: "",
+  generatedValue: "",
   roi: "",
 };
 
@@ -166,6 +167,10 @@ export default function EquipePage() {
               />
             </div>
             <div className="field">
+              <label htmlFor="generatedValue">Valor gerado (R$)</label>
+              <input id="generatedValue" type="number" min="0" value={form.generatedValue} onChange={(event) => setForm({ ...form, generatedValue: event.target.value })} placeholder="12500" />
+            </div>
+            <div className="field">
               <label htmlFor="performance">Desempenho (%)</label>
               <input
                 id="performance"
@@ -222,6 +227,7 @@ export default function EquipePage() {
                 <th>DESEMPENHO / META</th>
                 <th className="num">CUSTO MENSAL</th>
                 <th className="num">ROI</th>
+                <th className="num">GERADO</th>
                 <th>STATUS</th>
                 <th className="actions">AÇÕES</th>
               </tr>
@@ -254,6 +260,7 @@ export default function EquipePage() {
                     </td>
                     <td className="num">{brl(member.monthlyCost)}</td>
                     <td className="num">{member.roi}%</td>
+                    <td className="num">{brl(member.generatedValue ?? 0)}</td>
                     <td>
                       <button
                         className={`pill ${member.status === "ACTIVE" ? "green" : "amber"}`}

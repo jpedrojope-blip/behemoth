@@ -52,6 +52,8 @@ export type TeamMember = {
   performance: number;
   target: number;
   monthlyCost: number;
+  /** Receita ou valor economizado atribuído ao integrante no período. */
+  generatedValue: number;
   roi: number;
   status: "ACTIVE" | "REVIEW";
 };

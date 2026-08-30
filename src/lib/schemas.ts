@@ -33,6 +33,7 @@ export const teamCreateSchema = z.object({
   performance: percentValue.default(0),
   target: percentValue.default(100),
   monthlyCost: z.coerce.number().min(0).default(0),
+  generatedValue: z.coerce.number().min(0).default(0),
   roi: z.coerce.number().min(0).default(0),
   status: z.enum(["ACTIVE", "REVIEW"]).default("ACTIVE"),
 });

@@ -79,10 +79,10 @@ export function createSeed(): Database {
       { id: "tx_5", companyId: COMPANY_ID, kind: "EXPENSE", date: monthsAgo(0, 20), description: "Serviços administrativos", category: "Administrativo", amount: 259, source: "manual", status: "CONFIRMED" },
     ],
     team: [
-      { id: "member_1", companyId: COMPANY_ID, name: "Mariana Costa", type: "HUMAN", role: "Head de Marketing", performance: 94, target: 89, monthlyCost: 9800, roi: 162, status: "ACTIVE" },
-      { id: "member_2", companyId: COMPANY_ID, name: "Lucas Mendes", type: "HUMAN", role: "Executivo comercial", performance: 88, target: 92, monthlyCost: 7400, roi: 134, status: "REVIEW" },
-      { id: "agent_1", companyId: COMPANY_ID, name: "CopyMaster Pro", type: "AI", role: "Conteúdo e copy", performance: 91, target: 96, monthlyCost: 620, roi: 248, status: "ACTIVE" },
-      { id: "agent_2", companyId: COMPANY_ID, name: "SupportBot", type: "AI", role: "Atendimento WhatsApp", performance: 87, target: 90, monthlyCost: 480, roi: 193, status: "ACTIVE" },
+      { id: "member_1", companyId: COMPANY_ID, name: "Mariana Costa", type: "HUMAN", role: "Head de Marketing", performance: 94, target: 89, monthlyCost: 9800, generatedValue: 15896, roi: 162, status: "ACTIVE" },
+      { id: "member_2", companyId: COMPANY_ID, name: "Lucas Mendes", type: "HUMAN", role: "Executivo comercial", performance: 88, target: 92, monthlyCost: 7400, generatedValue: 9916, roi: 134, status: "REVIEW" },
+      { id: "agent_1", companyId: COMPANY_ID, name: "CopyMaster Pro", type: "AI", role: "Conteúdo e copy", performance: 91, target: 96, monthlyCost: 620, generatedValue: 1538, roi: 248, status: "ACTIVE" },
+      { id: "agent_2", companyId: COMPANY_ID, name: "SupportBot", type: "AI", role: "Atendimento WhatsApp", performance: 87, target: 90, monthlyCost: 480, generatedValue: 926, roi: 193, status: "ACTIVE" },
     ],
     meetings: [
       {
