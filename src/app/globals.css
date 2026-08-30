@@ -163,4 +163,16 @@ a{color:inherit;text-decoration:none}
 .card .calendar-cell.selected{background:#edf3ff;color:var(--blue)}
 .card .calendar-cell.today{border-color:var(--blue);color:var(--ink)}
 .card .calendar-weekday{color:#aebed7}
+.main-content,.page-wrap{background:#fff}
+.page-wrap{min-height:calc(100vh - 74px)}
+.welcome-row{margin-bottom:4px}
+.welcome-row h1{font-size:clamp(26px,2.2vw,34px);letter-spacing:-.035em}
+.kpi-grid{gap:20px;margin-top:30px;margin-bottom:20px}
+.kpi-card{min-height:175px;border-radius:20px;padding:25px;background:linear-gradient(145deg,#102c5a,#0a1d40)!important}
+.kpi-card .kpi-top{font-size:15px}.kpi-card .kpi-value{font-size:32px;margin:18px 0}.kpi-card .kpi-bottom{font-size:12px}
+.content-grid{grid-template-columns:1.45fr 1fr;gap:20px}.bottom-grid{grid-template-columns:1.45fr 1fr;gap:20px;margin-top:20px}
+.content-grid .card,.bottom-grid .card{border-radius:20px;padding:25px}
+.performance-card{min-height:390px}.insight-card{min-height:390px}
+.chart-svg{min-height:220px}
+.agenda-item{border-top-color:#29456e}.quick-grid{gap:12px}.quick-grid a{min-height:58px}
 @media(max-width:900px){.main-content{margin-left:0;width:100%}}
