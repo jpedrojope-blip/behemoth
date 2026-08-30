@@ -152,4 +152,10 @@ a{color:inherit;text-decoration:none}
 .kpi-card,.kpi-card.blue,.kpi-card.cream,.kpi-card.lavender,.kpi-card.mint{background:var(--panel);color:#fff;box-shadow:0 8px 18px #0b244b14}.kpi-card.cream .change{color:#f5b934!important}.kpi-card.lavender .change{color:#a77bff!important}.kpi-card.mint .change{color:#43d2a1!important}
 .card{background:var(--panel);border-color:#173762;color:#fff;box-shadow:0 8px 18px #0b244b12}.card h2{color:#fff}.card-kicker{color:#9eb0ce}
 .insight-body{background:#172f5d}.insight-body p,.agenda-info span{color:#b9c7dc}.quick-grid a{border-color:#29456e;color:#fff;background:#102953}
+.card .table tbody tr:hover{background:#17345f;color:#fff}
+.card .table td{border-top-color:#29456e;color:#f4f7fc}
+.card .table td .muted{color:#aebed7}
+.card .table th{color:#9eb0ce}
+.card .table select.btn-ghost{background:#fff;color:#58667d;border-color:#d8e0ec}
+.card .table .icon-action{background:#f7faff;color:#52637d;border-color:#dbe4f1}
 @media(max-width:900px){.main-content{margin-left:0;width:100%}}
