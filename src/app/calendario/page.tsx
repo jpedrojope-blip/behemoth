@@ -230,7 +230,7 @@ export default function CalendarioPage() {
       )}
 
       <section className="section split">
-        <div className="card">
+        <div className="card calendar-main-card">
           <div className="section-head">
             <h2>{cursor.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</h2>
             <div style={{ display: "flex", gap: 8 }}>
@@ -275,7 +275,7 @@ export default function CalendarioPage() {
           </div>
         </div>
 
-        <div className="card">
+        <div className="card day-agenda-card">
           <div className="card-head">
             <div>
               <p className="card-kicker">{shortDate(selectedDay)}</p>
