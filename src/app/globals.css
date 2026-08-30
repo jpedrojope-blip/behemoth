@@ -158,4 +158,9 @@ a{color:inherit;text-decoration:none}
 .card .table th{color:#9eb0ce}
 .card .table select.btn-ghost{background:#fff;color:#58667d;border-color:#d8e0ec}
 .card .table .icon-action{background:#f7faff;color:#52637d;border-color:#dbe4f1}
+.card .calendar-cell{color:var(--ink);background:#fff}
+.card .calendar-cell.empty-cell{background:transparent;color:inherit}
+.card .calendar-cell.selected{background:#edf3ff;color:var(--blue)}
+.card .calendar-cell.today{border-color:var(--blue);color:var(--ink)}
+.card .calendar-weekday{color:#aebed7}
 @media(max-width:900px){.main-content{margin-left:0;width:100%}}
