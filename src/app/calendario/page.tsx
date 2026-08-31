@@ -265,9 +265,17 @@ export default function CalendarioPage() {
                 >
                   <span className="calendar-day">{Number(day.slice(8))}</span>
                   <span className="calendar-dots">
-                    {events.slice(0, 3).map((event) => (
-                      <i key={event.id} className={`dot ${KIND_TONES[event.kind]}`} />
+                    {events.slice(0, 2).map((event) => (
+                      <span
+                        key={event.id}
+                        className={`calendar-chip ${KIND_TONES[event.kind]}`}
+                        style={event.done ? { opacity: 0.55, textDecoration: "line-through" } : undefined}
+                        title={`${event.time} · ${event.title}`}
+                      >
+                        {event.time} {event.title}
+                      </span>
                     ))}
+                    {events.length > 2 && <span className="calendar-more">+{events.length - 2}</span>}
                   </span>
                 </button>
               );

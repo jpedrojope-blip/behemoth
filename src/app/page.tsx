@@ -4,22 +4,31 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   ArrowUpRight,
+  BadgeDollarSign,
+  Bot,
   CalendarDays,
   ChevronDown,
+  ChevronRight,
   FileText,
   Plus,
   Sparkles,
   TrendingDown,
   TrendingUp,
   Users,
-  WalletCards,
+  Wallet,
   Zap,
 } from "lucide-react";
-import { LineChart } from "@/components/ui/line-chart";
+import { BarChart } from "@/components/ui/bar-chart";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, useResource } from "@/lib/client";
-import { PERIOD_LABELS, type Financials, type MonthlyPoint, type Period } from "@/lib/finance";
-import { brl, longDate, signedPercent } from "@/lib/format";
+import {
+  PERIOD_LABELS,
+  type Financials,
+  type MonthlyPoint,
+  type Period,
+  type WeekdayPoint,
+} from "@/lib/finance";
+import { brl, longDate, percent, shortDate, signedPercent } from "@/lib/format";
 import type { CalendarEvent, Company, Insight, Transaction } from "@/lib/types";
 
 type Overview = {
@@ -28,9 +37,9 @@ type Overview = {
   financials: Financials;
   comparison: { revenue: number; costs: number; profit: number; previous: Financials };
   series: MonthlyPoint[];
+  weekday: WeekdayPoint[];
   insights: Insight[];
   agenda: CalendarEvent[];
-  upcoming: CalendarEvent[];
   team: { total: number; humans: number; agents: number; monthlyCost: number };
   openActionItems: number;
   recentTransactions: Transaction[];
@@ -51,8 +60,13 @@ export default function DashboardPage() {
 
   const today = useMemo(() => longDate(new Date()), []);
   const insights = data?.insights ?? [];
-  const isEmpty = Boolean(data) && !data?.financials.transactionCount && !data?.team.total;
   const insight = insights[insightIndex % Math.max(insights.length, 1)];
+  const isEmpty = Boolean(data) && !data?.financials.transactionCount && !data?.team.total;
+
+  const financials = data?.financials;
+  const revenue = financials?.grossRevenue ?? 0;
+  const costs = financials?.costs ?? 0;
+  const previousRevenue = data?.comparison.previous.grossRevenue ?? 0;
 
   async function toggleEvent(event: CalendarEvent) {
     try {
@@ -73,16 +87,21 @@ export default function DashboardPage() {
           </h1>
           <p className="subtitle">Aqui está o que está acontecendo na sua empresa.</p>
         </div>
-        <div className="period-select">
-          <CalendarDays size={16} />
-          <select value={period} onChange={(event) => setPeriod(event.target.value as Period)}>
-            {Object.entries(PERIOD_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <ChevronDown size={15} />
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div className="period-select">
+            <CalendarDays size={16} />
+            <select value={period} onChange={(event) => setPeriod(event.target.value as Period)}>
+              {Object.entries(PERIOD_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={15} />
+          </div>
+          <Link className="btn btn-primary" href="/financeiro?novo=1">
+            <Plus size={16} /> Novo Lançamento
+          </Link>
         </div>
       </section>
 
@@ -125,73 +144,151 @@ export default function DashboardPage() {
 
       <section className="kpi-grid">
         <Kpi
-          label="Receita"
-          value={brl(data?.financials.grossRevenue ?? 0)}
-          change={data ? signedPercent(data.comparison.revenue) : "—"}
-          positive={(data?.comparison.revenue ?? 0) >= 0}
-          detail={`vs. período anterior`}
+          icon={<BadgeDollarSign size={24} />}
           tone="blue"
+          label="Receita"
+          sub="Total de entradas"
+          value={brl(revenue)}
+          meter={previousRevenue ? Math.min(100, (revenue / Math.max(revenue, previousRevenue)) * 100) : revenue ? 100 : 0}
+          meterLabel={data ? `${signedPercent(data.comparison.revenue)} vs. anterior` : "—"}
+          positive={(data?.comparison.revenue ?? 0) >= 0}
           href="/financeiro"
         />
         <Kpi
+          icon={<Wallet size={22} />}
+          tone="amber"
           label="Custos"
-          value={brl(data?.financials.costs ?? 0)}
-          change={data ? signedPercent(data.comparison.costs) : "—"}
-          positive={(data?.comparison.costs ?? 0) <= 0}
-          detail={`${data?.financials.transactionCount ?? 0} lançamentos`}
-          tone="cream"
+          sub="Total de despesas"
+          value={brl(costs)}
+          meter={revenue ? (costs / revenue) * 100 : 0}
+          meterLabel={revenue ? `${percent((costs / revenue) * 100, 0)} da receita` : "sem receita no período"}
+          barTone="amber"
           href="/financeiro"
         />
         <Kpi
-          label="Equipe & agentes"
+          icon={<Users size={22} />}
+          tone="purple"
+          label="Equipe e Agentes"
+          sub={`${data?.team.humans ?? 0} humanos · ${data?.team.agents ?? 0} agentes IA`}
           value={String(data?.team.total ?? 0)}
-          suffix={`${data?.team.agents ?? 0} agentes IA`}
-          change={brl(data?.team.monthlyCost ?? 0)}
-          positive
-          detail="custo mensal"
-          tone="lavender"
+          meter={data?.team.total ? ((data.team.agents ?? 0) / data.team.total) * 100 : 0}
+          meterLabel={`${brl(data?.team.monthlyCost ?? 0)} por mês`}
+          barTone="purple"
           href="/equipe"
         />
         <Kpi
-          label="Lucro líquido"
-          value={brl(data?.financials.netProfit ?? 0)}
-          change={data ? signedPercent(data.comparison.profit) : "—"}
-          positive={(data?.financials.netProfit ?? 0) >= 0}
-          detail={`margem ${((data?.financials.netMargin ?? 0) * 100).toFixed(1).replace(".", ",")}%`}
-          tone="mint"
+          icon={<TrendingUp size={22} />}
+          tone="green"
+          label="Lucro Líquido"
+          sub="Receita menos custos"
+          value={brl(financials?.netProfit ?? 0)}
+          meter={(financials?.netMargin ?? 0) * 100}
+          meterLabel={`${percent((financials?.netMargin ?? 0) * 100)} de margem`}
+          barTone="green"
           href="/financeiro"
         />
       </section>
 
       <section className="content-grid">
-        <div className="card performance-card">
+        <div className="card">
           <div className="card-head">
             <div>
-              <p className="card-kicker">DESEMPENHO FINANCEIRO</p>
-              <h2>Receita x custos por mês</h2>
+              <h2>Desempenho Financeiro</h2>
+              <p className="subtitle" style={{ fontSize: 12.5, marginTop: 6 }}>
+                Total de ganhos no período
+              </p>
               <div className="big-number">
-                {brl(data?.financials.netProfit ?? 0)}
-                <span className="trend">
-                  {(data?.comparison.profit ?? 0) >= 0 ? <TrendingUp size={15} /> : <TrendingDown size={15} />}{" "}
-                  {data ? signedPercent(data.comparison.profit) : "—"}
+                {brl(revenue)}
+                <span className="trend" style={{ color: (data?.comparison.revenue ?? 0) >= 0 ? undefined : "#ff8f7a" }}>
+                  {(data?.comparison.revenue ?? 0) >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                  {data ? signedPercent(data.comparison.revenue) : "—"}
                 </span>
               </div>
             </div>
             <Link className="select-small" href="/financeiro">
-              Detalhar <ArrowUpRight size={14} />
+              Mensal <ChevronDown size={14} />
             </Link>
           </div>
           {loading && !data ? (
             <p className="loading">Carregando dados...</p>
           ) : (
-            <LineChart
+            <BarChart
               labels={(data?.series ?? []).map((point) => point.label)}
-              series={[
-                { label: "Receita", values: (data?.series ?? []).map((point) => point.income), color: "#316cf4", fill: true },
-                { label: "Custos", values: (data?.series ?? []).map((point) => point.expense), color: "#f4a860" },
-              ]}
+              series={[{ label: "Receita", values: (data?.series ?? []).map((point) => point.income), color: "#2563eb" }]}
+              highlightLast
+              height={240}
             />
           )}
+        </div>
+
+        <div className="card">
+          <div className="card-head">
+            <div>
+              <h2>Relatório Semanal</h2>
+              <p className="subtitle" style={{ fontSize: 12.5, marginTop: 6 }}>
+                Distribuição por dia da semana
+              </p>
+            </div>
+          </div>
+          {loading && !data ? (
+            <p className="loading">Carregando...</p>
+          ) : (
+            <BarChart
+              labels={(data?.weekday ?? []).map((point) => point.label)}
+              series={[
+                { label: "Receita", values: (data?.weekday ?? []).map((point) => point.income), color: "#2563eb" },
+                { label: "Despesas", values: (data?.weekday ?? []).map((point) => point.expense), color: "#64748b" },
+              ]}
+              height={240}
+            />
+          )}
+        </div>
+      </section>
+
+      <section className="bottom-grid">
+        <div className="card">
+          <div className="card-head">
+            <h2>Últimos Lançamentos</h2>
+            <Link className="link-btn" href="/financeiro">
+              Ver todos <ChevronRight size={15} />
+            </Link>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            {(data?.recentTransactions ?? []).map((transaction) => (
+              <div className="list-item" key={transaction.id}>
+                <div
+                  className="quick-icon"
+                  style={
+                    transaction.kind === "INCOME"
+                      ? { background: "#10331f", color: "#4ade80" }
+                      : { background: "#37260d", color: "#f7b955" }
+                  }
+                >
+                  {transaction.kind === "INCOME" ? <TrendingUp size={17} /> : <TrendingDown size={17} />}
+                </div>
+                <div className="grow">
+                  <strong>{transaction.description}</strong>
+                  <span>
+                    {transaction.category} · {shortDate(transaction.date)}
+                  </span>
+                </div>
+                <b
+                  style={{
+                    fontSize: 13.5,
+                    fontVariantNumeric: "tabular-nums",
+                    color: transaction.kind === "INCOME" ? "#4ade80" : "#ff8f7a",
+                  }}
+                >
+                  {transaction.kind === "INCOME" ? "+" : "−"} {brl(transaction.amount)}
+                </b>
+              </div>
+            ))}
+            {!data?.recentTransactions.length && !loading && (
+              <p className="empty">
+                Nenhum lançamento ainda. <Link href="/financeiro?novo=1">Cadastrar o primeiro</Link>
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="card insight-card">
@@ -201,7 +298,7 @@ export default function DashboardPage() {
               <h2>Insights para você</h2>
             </div>
             <div className="sparkle">
-              <Sparkles size={17} />
+              <Sparkles size={18} />
             </div>
           </div>
           <div className="insight-body">
@@ -217,7 +314,7 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="insight-footer">
-            <span>● Calculado sobre {data?.financials.transactionCount ?? 0} lançamentos</span>
+            <span>● Calculado sobre {financials?.transactionCount ?? 0} lançamentos</span>
             <button onClick={() => setInsightIndex((index) => index + 1)} disabled={insights.length < 2}>
               {insights.length ? `${(insightIndex % insights.length) + 1} de ${insights.length}` : "0"}
             </button>
@@ -226,14 +323,14 @@ export default function DashboardPage() {
       </section>
 
       <section className="bottom-grid">
-        <div className="card agenda-card">
+        <div className="card">
           <div className="card-head">
             <div>
               <p className="card-kicker">AGENDA DE HOJE</p>
               <h2>Seus próximos compromissos</h2>
             </div>
             <Link className="link-btn" href="/calendario">
-              Ver calendário <ArrowUpRight size={15} />
+              Ver calendário <ChevronRight size={15} />
             </Link>
           </div>
           {!data?.agenda.length && !loading && (
@@ -253,25 +350,25 @@ export default function DashboardPage() {
                   {event.owner} · {event.durationMinutes} min
                 </span>
               </div>
-              <button onClick={() => toggleEvent(event)} title={event.done ? "Reabrir" : "Concluir"}>
+              <button className="icon-action" onClick={() => toggleEvent(event)} title={event.done ? "Reabrir" : "Concluir"}>
                 <ArrowUpRight size={15} />
               </button>
             </div>
           ))}
         </div>
 
-        <div className="card quick-card">
+        <div className="card">
           <div className="card-head">
             <div>
               <p className="card-kicker">ATALHOS</p>
-              <h2>Ações rápidas</h2>
+              <h2>Ações Rápidas</h2>
             </div>
           </div>
-          <div className="quick-grid">
-            <Quick icon={<FileText size={19} />} text="Relatório financeiro" href="/financeiro" />
-            <Quick icon={<Plus size={20} />} text="Novo lançamento" href="/financeiro?novo=1" />
-            <Quick icon={<Users size={19} />} text="Adicionar agente" href="/equipe?novo=1" />
-            <Quick icon={<WalletCards size={19} />} text="Nova reunião" href="/reunioes?novo=1" />
+          <div style={{ marginTop: 10 }}>
+            <Action href="/financeiro" icon={<FileText size={18} />} title="Gerar Relatório" hint="Resultado do período por categoria" />
+            <Action href="/financeiro?novo=1" icon={<Plus size={18} />} title="Novo Lançamento" hint="Registre receita ou despesa" />
+            <Action href="/equipe?novo=1" icon={<Bot size={18} />} title="Convidar Agente" hint="Adicione um agente de IA ao time" />
+            <Action href="/reunioes?novo=1" icon={<CalendarDays size={18} />} title="Nova Reunião" hint="Notas, resumo e itens de ação" />
           </div>
         </div>
       </section>
@@ -287,49 +384,60 @@ function greeting() {
 }
 
 function Kpi({
-  label,
-  value,
-  suffix,
-  change,
-  detail,
+  icon,
   tone,
+  label,
+  sub,
+  value,
+  meter,
+  meterLabel,
+  barTone,
+  positive = true,
   href,
-  positive,
 }: {
-  label: string;
-  value: string;
-  suffix?: string;
-  change: string;
-  detail: string;
+  icon: React.ReactNode;
   tone: string;
+  label: string;
+  sub: string;
+  value: string;
+  meter: number;
+  meterLabel: string;
+  barTone?: string;
+  positive?: boolean;
   href: string;
-  positive: boolean;
 }) {
   return (
-    <Link className={`kpi-card ${tone}`} href={href}>
-      <div className="kpi-top">
-        <span>{label}</span>
-        <ArrowUpRight size={17} />
+    <Link className="kpi-card" href={href}>
+      <div className="kpi-head">
+        <div className={`kpi-icon ${tone}`}>{icon}</div>
+        <div>
+          <div className="kpi-label">{label}</div>
+          <div className="kpi-sub">{sub}</div>
+          <div className="kpi-value">{value}</div>
+        </div>
       </div>
-      <div className="kpi-value">
-        {value} <small>{suffix}</small>
+      <div className="kpi-meter">
+        <div className={`bar ${barTone ?? ""}`}>
+          <span style={{ width: `${Math.max(0, Math.min(100, meter))}%` }} />
+        </div>
+        <span style={positive ? undefined : { color: "#ff8f7a" }}>{meterLabel}</span>
       </div>
-      <div className="kpi-bottom">
-        <span className="change" style={positive ? undefined : { color: "#c9563a" }}>
-          {positive ? <TrendingUp size={13} /> : <TrendingDown size={13} />} {change}
-        </span>
-        <span>{detail}</span>
+      <div className="kpi-link">
+        Ver detalhes <ChevronRight size={14} />
       </div>
     </Link>
   );
 }
 
-function Quick({ icon, text, href }: { icon: React.ReactNode; text: string; href: string }) {
+function Action({ href, icon, title, hint }: { href: string; icon: React.ReactNode; title: string; hint: string }) {
   return (
-    <Link href={href}>
-      <div className="quick-icon">{icon}</div>
-      <span>{text}</span>
-      <ArrowUpRight size={15} />
+    <Link className="action-row" href={href}>
+      <div className="icon">{icon}</div>
+      <div style={{ flex: 1 }}>
+        <strong>{title}</strong>
+        <span>{hint}</span>
+      </div>
+      <ChevronRight size={16} color="#6b7d9c" />
     </Link>
   );
 }

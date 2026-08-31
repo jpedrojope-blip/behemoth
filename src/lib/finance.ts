@@ -81,7 +81,7 @@ export function percentChange(current: number, previous: number) {
   return ((current - previous) / previous) * 100;
 }
 
-export type MonthlyPoint = { label: string; month: string; income: number; expense: number; profit: number };
+export type MonthlyPoint = { label: string; month: string; income: number; expense: number; profit: number; count: number };
 
 export function monthlySeries(transactions: Transaction[], months = 8, reference = new Date()): MonthlyPoint[] {
   const points: MonthlyPoint[] = [];
@@ -99,6 +99,7 @@ export function monthlySeries(transactions: Transaction[], months = 8, reference
       income,
       expense,
       profit: income - expense,
+      count: scoped.length,
     });
   }
   return points;
@@ -122,6 +123,25 @@ export function categoryBreakdown(transactions: Transaction[], kind: Transaction
 
 function ptNumber(value: number, fractionDigits = 1) {
   return value.toFixed(fractionDigits).replace(".", ",");
+}
+
+export type WeekdayPoint = { label: string; income: number; expense: number };
+
+const WEEKDAY_LABELS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+
+/** Distribui o período pelos dias da semana — base do "Relatório Semanal". */
+export function weekdayBreakdown(transactions: Transaction[], period: Period, reference = new Date()): WeekdayPoint[] {
+  const points: WeekdayPoint[] = WEEKDAY_LABELS.map((label) => ({ label, income: 0, expense: 0 }));
+
+  for (const transaction of filterByPeriod(transactions, period, reference)) {
+    if (transaction.status !== "CONFIRMED") continue;
+    const date = parseDate(transaction.date);
+    const index = (date.getDay() + 6) % 7; // segunda = 0
+    if (transaction.kind === "INCOME") points[index].income += transaction.amount;
+    else points[index].expense += transaction.amount;
+  }
+
+  return points;
 }
 
 export function buildInsights(transactions: Transaction[], period: Period, reference = new Date()): Insight[] {

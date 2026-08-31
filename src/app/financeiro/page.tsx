@@ -1,7 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CalendarDays, Check, ChevronDown, Plus, Repeat, Trash2, X, Zap } from "lucide-react";
+import {
+  BadgeDollarSign,
+  CalendarDays,
+  Check,
+  ChevronDown,
+  Coins,
+  Plus,
+  Receipt,
+  Repeat,
+  TrendingUp,
+  Trash2,
+  X,
+  Zap,
+} from "lucide-react";
+import { Donut } from "@/components/ui/donut";
+import { Gauge } from "@/components/ui/gauge";
 import { LineChart } from "@/components/ui/line-chart";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, useResource } from "@/lib/client";
@@ -36,6 +51,8 @@ const EMPTY_FORM = {
   status: "CONFIRMED" as Transaction["status"],
   recurrence: "NONE" as NonNullable<Transaction["recurrence"]>,
 };
+
+const CATEGORY_COLORS = ["#2563eb", "#3b82f6", "#8b5cf6", "#f5a524", "#22c55e", "#64748b", "#0ea5e9"];
 
 export default function FinanceiroPage() {
   const [period, setPeriod] = useState<Period>("mes");
@@ -91,14 +108,17 @@ export default function FinanceiroPage() {
   }
 
   const financials = data?.financials;
+  const revenue = financials?.grossRevenue ?? 0;
+  const costs = financials?.costs ?? 0;
+  const margin = (financials?.netMargin ?? 0) * 100;
+  const costIndex = revenue ? (costs / revenue) * 100 : 0;
 
   return (
     <div className="page-wrap">
       <div className="page-head">
         <div>
-          <p className="eyebrow">RELATÓRIO FINANCEIRO</p>
-          <h1 className="page-title">Resultado do período</h1>
-          <p className="subtitle">Receita, custos, lucro e margem calculados sobre os lançamentos registrados.</p>
+          <h1 className="page-title">Relatório Financeiro</h1>
+          <p className="subtitle">Acompanhe em detalhes a saúde financeira do seu negócio.</p>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <div className="period-select">
@@ -120,36 +140,46 @@ export default function FinanceiroPage() {
 
       {error && <p className="form-error">{error}</p>}
 
-      <section className="section stat-grid">
-        <div className="stat">
-          <span>Receita bruta</span>
-          <strong>{brl(financials?.grossRevenue ?? 0)}</strong>
-          <small>{data ? `${signedPercent(data.comparison.revenue)} vs. período anterior` : "—"}</small>
-        </div>
-        <div className="stat">
-          <span>Custos totais</span>
-          <strong>{brl(financials?.costs ?? 0)}</strong>
-          <small>{data ? `${signedPercent(data.comparison.costs)} vs. período anterior` : "—"}</small>
-        </div>
-        <div className="stat">
-          <span>Lucro líquido</span>
-          <strong>{brl(financials?.netProfit ?? 0)}</strong>
-          <small>{data ? `${signedPercent(data.comparison.profit)} vs. período anterior` : "—"}</small>
-        </div>
-        <div className="stat">
-          <span>Margem líquida</span>
-          <strong>{percent((financials?.netMargin ?? 0) * 100)}</strong>
-          <small>
-            {financials?.transactionCount ?? 0} lançamentos · {data?.automated ?? 0} automáticos
-          </small>
-        </div>
+      <section className="kpi-grid">
+        <FinanceCard
+          icon={<BadgeDollarSign size={22} />}
+          tone="blue"
+          label="RECEITA BRUTA"
+          value={brl(revenue)}
+          delta={data ? signedPercent(data.comparison.revenue) : "—"}
+          positive={(data?.comparison.revenue ?? 0) >= 0}
+        />
+        <FinanceCard
+          icon={<Receipt size={22} />}
+          tone="amber"
+          label="CUSTOS TOTAIS"
+          value={brl(costs)}
+          delta={data ? signedPercent(data.comparison.costs) : "—"}
+          positive={(data?.comparison.costs ?? 0) <= 0}
+        />
+        <FinanceCard
+          icon={<TrendingUp size={22} />}
+          tone="green"
+          label="LUCRO LÍQUIDO"
+          value={brl(financials?.netProfit ?? 0)}
+          delta={data ? signedPercent(data.comparison.profit) : "—"}
+          positive={(financials?.netProfit ?? 0) >= 0}
+        />
+        <FinanceCard
+          icon={<Coins size={22} />}
+          tone="purple"
+          label="MARGEM LÍQUIDA"
+          value={percent(margin)}
+          delta={`${financials?.transactionCount ?? 0} lançamentos`}
+          positive={margin >= 0}
+        />
       </section>
 
       <section className="section split">
         <div className="card">
           <div className="card-head">
             <div>
-              <p className="card-kicker">EVOLUÇÃO MENSAL</p>
+              <p className="card-kicker">RESULTADO DO PERÍODO</p>
               <h2>Receita, custos e lucro</h2>
             </div>
           </div>
@@ -159,9 +189,9 @@ export default function FinanceiroPage() {
             <LineChart
               labels={(data?.series ?? []).map((point) => point.label)}
               series={[
-                { label: "Receita", values: (data?.series ?? []).map((point) => point.income), color: "#316cf4", fill: true },
-                { label: "Custos", values: (data?.series ?? []).map((point) => point.expense), color: "#f4a860" },
-                { label: "Lucro", values: (data?.series ?? []).map((point) => point.profit), color: "#2eab84" },
+                { label: "Receita", values: (data?.series ?? []).map((point) => point.income), color: "#2563eb", fill: true },
+                { label: "Custos", values: (data?.series ?? []).map((point) => point.expense), color: "#f5a524" },
+                { label: "Lucro", values: (data?.series ?? []).map((point) => point.profit), color: "#22c55e" },
               ]}
             />
           )}
@@ -170,34 +200,112 @@ export default function FinanceiroPage() {
         <div className="card">
           <div className="card-head">
             <div>
-              <p className="card-kicker">DRE SIMPLIFICADA</p>
-              <h2>Composição dos custos</h2>
+              <p className="card-kicker">COMPOSIÇÃO DOS CUSTOS</p>
+              <h2>Para onde vai o dinheiro</h2>
             </div>
           </div>
-          <div style={{ marginTop: 18 }}>
-            {(data?.expensesByCategory ?? []).map((entry) => (
-              <div className="list-item" key={entry.category}>
-                <div className="grow">
-                  <strong>{entry.category}</strong>
-                  <div className="bar amber">
-                    <span style={{ width: `${Math.round(entry.share * 100)}%` }} />
-                  </div>
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <strong style={{ fontSize: 13 }}>{brl(entry.amount)}</strong>
-                  <div className="small muted">{percent(entry.share * 100, 0)}</div>
-                </div>
-              </div>
-            ))}
-            {!data?.expensesByCategory.length && <p className="empty">Sem custos no período.</p>}
+          {data?.expensesByCategory.length ? (
+            <Donut
+              slices={data.expensesByCategory.map((entry, index) => ({
+                label: entry.category,
+                value: entry.amount,
+                color: CATEGORY_COLORS[index % CATEGORY_COLORS.length],
+              }))}
+              centerValue={brl(costs)}
+              centerLabel="Total"
+              size={178}
+              formatValue={brl}
+            />
+          ) : (
+            <p className="empty" style={{ marginTop: 18 }}>
+              Sem custos registrados no período.
+            </p>
+          )}
+        </div>
+      </section>
+
+      <section className="section split">
+        <div className="card">
+          <div className="card-head">
+            <div>
+              <p className="card-kicker">DETALHAMENTO FINANCEIRO</p>
+              <h2>Demonstrativo do período</h2>
+            </div>
           </div>
+          <div className="table-wrap" style={{ marginTop: 16 }}>
+            <table className="table" style={{ minWidth: 420 }}>
+              <thead>
+                <tr>
+                  <th>DESCRIÇÃO</th>
+                  <th className="num">VALOR</th>
+                  <th className="num">% DA RECEITA</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Receita bruta</td>
+                  <td className="num">{brlExact(revenue)}</td>
+                  <td className="num">100,0%</td>
+                </tr>
+                {(data?.expensesByCategory ?? []).map((entry) => (
+                  <tr key={entry.category}>
+                    <td style={{ paddingLeft: 26, color: "var(--muted)" }}>(−) {entry.category}</td>
+                    <td className="num" style={{ color: "#ff8f7a" }}>
+                      −{brlExact(entry.amount)}
+                    </td>
+                    <td className="num">{revenue ? percent((entry.amount / revenue) * 100) : "—"}</td>
+                  </tr>
+                ))}
+                <tr>
+                  <td>
+                    <strong>= Lucro líquido</strong>
+                  </td>
+                  <td className="num">
+                    <strong style={{ color: (financials?.netProfit ?? 0) >= 0 ? "#4ade80" : "#ff8f7a" }}>
+                      {brlExact(financials?.netProfit ?? 0)}
+                    </strong>
+                  </td>
+                  <td className="num">
+                    <strong>{percent(margin)}</strong>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-head">
+            <div>
+              <p className="card-kicker">INDICADORES DE DESEMPENHO</p>
+              <h2>Margem e eficiência</h2>
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginTop: 24 }}>
+            <Indicator
+              value={margin}
+              label="Margem líquida"
+              hint="lucro sobre a receita"
+              color={margin >= 0 ? "#22c55e" : "#ef4444"}
+            />
+            <Indicator
+              value={costIndex}
+              label="Índice de custos"
+              hint="custos sobre a receita"
+              color={costIndex > 70 ? "#ef4444" : "#3b82f6"}
+            />
+          </div>
+          <p className="small muted" style={{ marginTop: 22 }}>
+            {data?.automated ?? 0} lançamento(s) do período vieram de automações — custo da equipe, pagamentos
+            concluídos e recorrências.
+          </p>
         </div>
       </section>
 
       <section className="section card">
         <div className="section-head">
           <h2>Lançamentos</h2>
-          <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <select className="btn btn-ghost" value={kind} onChange={(event) => setKind(event.target.value)}>
               <option value="todos">Todos os tipos</option>
               <option value="INCOME">Receitas</option>
@@ -322,7 +430,7 @@ export default function FinanceiroPage() {
                 <tr key={transaction.id}>
                   <td>
                     <strong>{transaction.description}</strong>
-                    <div className="small muted" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div className="small muted" style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
                       {transaction.source ?? "manual"}
                       {transaction.auto && (
                         <span className="pill purple" title="Gerado por automação">
@@ -348,7 +456,7 @@ export default function FinanceiroPage() {
                       {transaction.status === "CONFIRMED" ? "Confirmado" : "Pendente"}
                     </button>
                   </td>
-                  <td className="num" style={{ color: transaction.kind === "INCOME" ? "#1d9271" : "#c9563a" }}>
+                  <td className="num" style={{ color: transaction.kind === "INCOME" ? "#4ade80" : "#ff8f7a" }}>
                     {transaction.kind === "INCOME" ? "+" : "−"} {brlExact(transaction.amount)}
                   </td>
                   <td className="actions">
@@ -367,6 +475,56 @@ export default function FinanceiroPage() {
           </p>
         )}
       </section>
+    </div>
+  );
+}
+
+function FinanceCard({
+  icon,
+  tone,
+  label,
+  value,
+  delta,
+  positive,
+}: {
+  icon: React.ReactNode;
+  tone: string;
+  label: string;
+  value: string;
+  delta: string;
+  positive: boolean;
+}) {
+  return (
+    <div className="kpi-card">
+      <div className="kpi-head">
+        <div className={`kpi-icon ${tone}`}>{icon}</div>
+        <div>
+          <div className="card-kicker" style={{ margin: 0 }}>
+            {label}
+          </div>
+          <div className="kpi-value" style={{ marginTop: 6 }}>
+            {value}
+          </div>
+        </div>
+      </div>
+      <div className="kpi-meter">
+        <span style={{ color: positive ? "#4ade80" : "#ff8f7a", fontWeight: 600 }}>{delta}</span>
+        <span>vs. período anterior</span>
+      </div>
+    </div>
+  );
+}
+
+function Indicator({ value, label, hint, color }: { value: number; label: string; hint: string; color: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      <Gauge value={Math.abs(value)} label="" size={76} color={color} />
+      <div>
+        <strong style={{ fontSize: 13.5 }}>{label}</strong>
+        <div className="small muted" style={{ marginTop: 4 }}>
+          {hint}
+        </div>
+      </div>
     </div>
   );
 }

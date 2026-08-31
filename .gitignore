@@ -6,3 +6,6 @@ node_modules/
 work/
 
 .data/
+
+# PDFs de referência abertos no preview (não versionar binários grandes)
+public/docs/

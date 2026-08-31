@@ -8,6 +8,7 @@ import {
   monthlySeries,
   percentChange,
   previousPeriod,
+  weekdayBreakdown,
   type Period,
 } from "@/lib/finance";
 import { getDatabase } from "@/lib/store";
@@ -36,6 +37,7 @@ export async function GET(request: Request) {
       previous,
     },
     series: monthlySeries(db.transactions, 8),
+    weekday: weekdayBreakdown(db.transactions, period),
     expensesByCategory: categoryBreakdown(scoped, "EXPENSE"),
     insights: buildInsights(db.transactions, period),
     agenda: db.events

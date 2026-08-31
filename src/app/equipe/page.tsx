@@ -1,10 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bot, Plus, Trash2, User, X } from "lucide-react";
+import {
+  Bot,
+  ChevronRight,
+  DollarSign,
+  Gauge as GaugeIcon,
+  Plus,
+  Search,
+  Target,
+  Trash2,
+  User,
+  Users,
+  X,
+} from "lucide-react";
+import { Donut } from "@/components/ui/donut";
+import { Gauge } from "@/components/ui/gauge";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, useResource } from "@/lib/client";
-import { brl } from "@/lib/format";
+import { brl, initials, percent } from "@/lib/format";
 import type { TeamMember } from "@/lib/types";
 
 type Summary = {
@@ -19,7 +33,7 @@ type Summary = {
   onTarget: number;
 };
 
-type Payload = { team: TeamMember[]; summary: Summary };
+type Payload = { team: TeamMember[]; summary: Summary; costAutomation: boolean };
 
 const EMPTY_FORM = {
   name: "",
@@ -32,12 +46,23 @@ const EMPTY_FORM = {
   roi: "",
 };
 
+type Filter = "todos" | "HUMAN" | "AI" | "baixo" | "custo";
+
+const FILTERS: { key: Filter; label: string }[] = [
+  { key: "todos", label: "Todos" },
+  { key: "HUMAN", label: "Funcionários" },
+  { key: "AI", label: "Agentes IA" },
+  { key: "baixo", label: "Baixo desempenho" },
+  { key: "custo", label: "Alto custo" },
+];
+
 export default function EquipePage() {
   const { data, loading, error } = useResource<Payload>("/api/team");
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
-  const [filter, setFilter] = useState<"todos" | "HUMAN" | "AI">("todos");
+  const [filter, setFilter] = useState<Filter>("todos");
+  const [query, setQuery] = useState("");
   const notify = useToast();
 
   useEffect(() => {
@@ -77,16 +102,32 @@ export default function EquipePage() {
     }
   }
 
-  const team = (data?.team ?? []).filter((member) => filter === "todos" || member.type === filter);
   const summary = data?.summary;
+  const all = data?.team ?? [];
+  const averageCost = all.length ? all.reduce((sum, member) => sum + member.monthlyCost, 0) / all.length : 0;
+
+  const team = all
+    .filter((member) => {
+      if (filter === "HUMAN" || filter === "AI") return member.type === filter;
+      if (filter === "baixo") return member.performance < member.target;
+      if (filter === "custo") return member.monthlyCost > averageCost;
+      return true;
+    })
+    .filter((member) =>
+      query.trim() ? `${member.name} ${member.role}`.toLowerCase().includes(query.trim().toLowerCase()) : true,
+    );
+
+  const agents = all.filter((member) => member.type === "AI");
+  const agentValue = agents.reduce((sum, member) => sum + (member.generatedValue ?? 0), 0);
+  const agentCost = agents.reduce((sum, member) => sum + member.monthlyCost, 0);
+  const savings = agentValue - agentCost;
 
   return (
     <div className="page-wrap">
       <div className="page-head">
         <div>
-          <p className="eyebrow">EQUIPE & AGENTES</p>
-          <h1 className="page-title">Trabalho humano e digital</h1>
-          <p className="subtitle">Custo, desempenho, metas e retorno de cada integrante — pessoas e agentes de IA.</p>
+          <h1 className="page-title">Gestão de Funcionários e Agentes</h1>
+          <p className="subtitle">Acompanhe o desempenho da equipe, custos e produtividade com dados reais.</p>
         </div>
         <button className="btn btn-primary" onClick={() => setFormOpen((open) => !open)}>
           {formOpen ? <X size={16} /> : <Plus size={16} />} {formOpen ? "Cancelar" : "Adicionar"}
@@ -95,31 +136,37 @@ export default function EquipePage() {
 
       {error && <p className="form-error">{error}</p>}
 
-      <section className="section stat-grid">
-        <div className="stat">
-          <span>Time total</span>
-          <strong>{summary?.total ?? 0}</strong>
-          <small>
-            {summary?.humans ?? 0} pessoas · {summary?.agents ?? 0} agentes
-          </small>
-        </div>
-        <div className="stat">
-          <span>Custo mensal</span>
-          <strong>{brl(summary?.monthlyCost ?? 0)}</strong>
-          <small>
-            Pessoas {brl(summary?.humanCost ?? 0)} · Agentes {brl(summary?.agentCost ?? 0)}
-          </small>
-        </div>
-        <div className="stat">
-          <span>Desempenho médio</span>
-          <strong>{summary?.averagePerformance ?? 0}%</strong>
-          <small>{summary?.onTarget ?? 0} dentro da meta</small>
-        </div>
-        <div className="stat">
-          <span>ROI médio</span>
-          <strong>{summary?.averageRoi ?? 0}%</strong>
-          <small>retorno estimado sobre o custo</small>
-        </div>
+      <section className="kpi-grid">
+        <SummaryCard
+          icon={<Users size={22} />}
+          tone="blue"
+          label="Total na Equipe"
+          value={String(summary?.total ?? 0)}
+          hint={`${summary?.humans ?? 0} humanos · ${summary?.agents ?? 0} agentes IA`}
+        />
+        <SummaryCard
+          icon={<DollarSign size={22} />}
+          tone="amber"
+          label="Custo Total Mensal"
+          value={brl(summary?.monthlyCost ?? 0)}
+          hint={`Agentes ${brl(summary?.agentCost ?? 0)} · Pessoas ${brl(summary?.humanCost ?? 0)}`}
+        />
+        <SummaryCard
+          icon={<GaugeIcon size={22} />}
+          tone="purple"
+          label="Desempenho Médio"
+          value={`${summary?.averagePerformance ?? 0}%`}
+          hint={`${summary?.onTarget ?? 0} de ${summary?.total ?? 0} dentro da meta`}
+          meter={summary?.averagePerformance ?? 0}
+        />
+        <SummaryCard
+          icon={<Target size={22} />}
+          tone="green"
+          label="ROI Médio"
+          value={`${summary?.averageRoi ?? 0}%`}
+          hint="retorno estimado sobre o custo"
+          meter={Math.min(100, summary?.averageRoi ?? 0)}
+        />
       </section>
 
       {formOpen && (
@@ -168,7 +215,14 @@ export default function EquipePage() {
             </div>
             <div className="field">
               <label htmlFor="generatedValue">Valor gerado (R$)</label>
-              <input id="generatedValue" type="number" min="0" value={form.generatedValue} onChange={(event) => setForm({ ...form, generatedValue: event.target.value })} placeholder="12500" />
+              <input
+                id="generatedValue"
+                type="number"
+                min="0"
+                value={form.generatedValue}
+                onChange={(event) => setForm({ ...form, generatedValue: event.target.value })}
+                placeholder="12500"
+              />
             </div>
             <div className="field">
               <label htmlFor="performance">Desempenho (%)</label>
@@ -209,80 +263,232 @@ export default function EquipePage() {
         </form>
       )}
 
-      <section className="section card">
-        <div className="section-head">
-          <h2>Integrantes</h2>
-          <select className="btn btn-ghost" value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)}>
-            <option value="todos">Todos</option>
-            <option value="HUMAN">Pessoas</option>
-            <option value="AI">Agentes de IA</option>
-          </select>
+      <section className="section split">
+        <div>
+          <div className="section-head">
+            <div className="tabs">
+              {FILTERS.map((entry) => (
+                <button
+                  key={entry.key}
+                  className={`tab ${filter === entry.key ? "active" : ""}`}
+                  onClick={() => setFilter(entry.key)}
+                >
+                  {entry.label}
+                </button>
+              ))}
+            </div>
+            <div className="search-field" style={{ maxWidth: 240 }}>
+              <Search size={16} />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Buscar membro..."
+                aria-label="Buscar membro"
+              />
+            </div>
+          </div>
+
+          <div className="member-grid">
+            {team.map((member) => {
+              const verdict = judge(member);
+              return (
+                <article className="member-card" key={member.id}>
+                  <div className="member-top">
+                    <div className={`member-avatar ${member.type === "AI" ? "ai" : ""}`}>
+                      {member.type === "AI" ? <Bot size={20} /> : initials(member.name)}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span className={`pill ${member.type === "AI" ? "purple" : "blue"}`}>
+                        {member.type === "AI" ? "Agente IA" : "Humano"}
+                      </span>
+                      <strong style={{ marginTop: 7 }}>{member.name}</strong>
+                      <span>{member.role}</span>
+                    </div>
+                    <button className="icon-action danger" onClick={() => remove(member)} title="Remover">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+
+                  <div className="member-gauges">
+                    <Gauge value={member.performance} label="Desempenho" />
+                    <Gauge
+                      value={member.target ? (member.performance / member.target) * 100 : 0}
+                      label="Meta batida"
+                      color={member.performance >= member.target ? "#22c55e" : "#f5a524"}
+                    />
+                  </div>
+
+                  <div className="member-foot">
+                    <span className={`pill ${verdict.tone}`}>{verdict.text}</span>
+                    <b>{brl(member.monthlyCost)}</b>
+                    <b style={{ color: member.roi >= 100 ? "#4ade80" : "#f7b955" }}>{member.roi}%</b>
+                  </div>
+
+                  <button
+                    className={`pill ${member.status === "ACTIVE" ? "green" : "amber"}`}
+                    onClick={() => patch(member, { status: member.status === "ACTIVE" ? "REVIEW" : "ACTIVE" })}
+                    style={{ alignSelf: "flex-start" }}
+                  >
+                    {member.status === "ACTIVE" ? "Ativo" : "Em revisão"}
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+
+          {!loading && !team.length && (
+            <p className="empty">
+              {all.length ? "Nenhum integrante neste filtro." : "Nenhum integrante cadastrado ainda."}
+            </p>
+          )}
         </div>
 
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>INTEGRANTE</th>
-                <th>DESEMPENHO / META</th>
-                <th className="num">CUSTO MENSAL</th>
-                <th className="num">ROI</th>
-                <th className="num">GERADO</th>
-                <th>STATUS</th>
-                <th className="actions">AÇÕES</th>
-              </tr>
-            </thead>
-            <tbody>
-              {team.map((member) => {
-                const onTarget = member.performance >= member.target;
-                return (
-                  <tr key={member.id}>
-                    <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div className="quick-icon" style={member.type === "AI" ? { background: "#f0ecff", color: "#7654e7" } : undefined}>
-                          {member.type === "AI" ? <Bot size={17} /> : <User size={17} />}
-                        </div>
-                        <div>
-                          <strong>{member.name}</strong>
-                          <div className="small muted">{member.role}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div className={`bar ${onTarget ? "green" : "amber"}`}>
-                          <span style={{ width: `${member.performance}%` }} />
-                        </div>
-                        <span className="small">
-                          {member.performance}% / {member.target}%
-                        </span>
-                      </div>
-                    </td>
-                    <td className="num">{brl(member.monthlyCost)}</td>
-                    <td className="num">{member.roi}%</td>
-                    <td className="num">{brl(member.generatedValue ?? 0)}</td>
-                    <td>
-                      <button
-                        className={`pill ${member.status === "ACTIVE" ? "green" : "amber"}`}
-                        onClick={() => patch(member, { status: member.status === "ACTIVE" ? "REVIEW" : "ACTIVE" })}
-                        title="Alternar status"
-                      >
-                        {member.status === "ACTIVE" ? "Ativo" : "Em revisão"}
-                      </button>
-                    </td>
-                    <td className="actions">
-                      <button className="icon-action danger" onClick={() => remove(member)} title="Remover">
-                        <Trash2 size={15} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div style={{ display: "grid", gap: 18 }}>
+          <div className="card">
+            <div className="card-head">
+              <h2>Distribuição da Equipe</h2>
+            </div>
+            {summary?.total ? (
+              <Donut
+                slices={[
+                  { label: "Humanos", value: summary.humans, color: "#2563eb" },
+                  { label: "Agentes IA", value: summary.agents, color: "#8b5cf6" },
+                ]}
+                centerValue={String(summary.total)}
+                centerLabel="Membros"
+                size={168}
+              />
+            ) : (
+              <p className="empty">Sem integrantes cadastrados.</p>
+            )}
+          </div>
+
+          <div className="card">
+            <div className="card-head">
+              <h2>Economia com Agentes IA</h2>
+            </div>
+            <div className="big-number" style={{ color: savings >= 0 ? "#4ade80" : "#ff8f7a" }}>
+              {brl(savings)}
+            </div>
+            <p className="small muted" style={{ marginTop: 8 }}>
+              Valor gerado pelos agentes menos o custo mensal deles.
+            </p>
+            <div style={{ marginTop: 16 }}>
+              <div className="list-item">
+                <div className="grow">
+                  <strong>Valor gerado</strong>
+                  <div className="bar green">
+                    <span style={{ width: `${agentValue ? 100 : 0}%` }} />
+                  </div>
+                </div>
+                <b style={{ fontSize: 13 }}>{brl(agentValue)}</b>
+              </div>
+              <div className="list-item">
+                <div className="grow">
+                  <strong>Custo dos agentes</strong>
+                  <div className="bar amber">
+                    <span style={{ width: `${agentValue ? Math.min(100, (agentCost / agentValue) * 100) : 0}%` }} />
+                  </div>
+                </div>
+                <b style={{ fontSize: 13 }}>{brl(agentCost)}</b>
+              </div>
+            </div>
+            {data?.costAutomation && (
+              <p className="small muted" style={{ marginTop: 14 }}>
+                O custo do time entra automaticamente como despesa do mês no Relatório.
+              </p>
+            )}
+          </div>
+
+          <div className="card">
+            <div className="card-head">
+              <h2>Ações Rápidas</h2>
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <button
+                className="action-row"
+                style={{ width: "100%" }}
+                onClick={() => {
+                  setForm({ ...EMPTY_FORM, type: "HUMAN" });
+                  setFormOpen(true);
+                }}
+              >
+                <div className="icon">
+                  <User size={18} />
+                </div>
+                <div style={{ flex: 1, textAlign: "left" }}>
+                  <strong>Adicionar Funcionário</strong>
+                  <span>Convide um novo membro humano</span>
+                </div>
+                <ChevronRight size={16} color="#6b7d9c" />
+              </button>
+              <button
+                className="action-row"
+                style={{ width: "100%" }}
+                onClick={() => {
+                  setForm({ ...EMPTY_FORM, type: "AI" });
+                  setFormOpen(true);
+                }}
+              >
+                <div className="icon">
+                  <Bot size={18} />
+                </div>
+                <div style={{ flex: 1, textAlign: "left" }}>
+                  <strong>Criar Agente de IA</strong>
+                  <span>Cadastre um novo agente inteligente</span>
+                </div>
+                <ChevronRight size={16} color="#6b7d9c" />
+              </button>
+            </div>
+          </div>
         </div>
-        {!loading && !team.length && <p className="empty" style={{ marginTop: 16 }}>Nenhum integrante cadastrado.</p>}
       </section>
+    </div>
+  );
+}
+
+/** Veredito do integrante calculado a partir de meta, desempenho e retorno. */
+function judge(member: TeamMember) {
+  if (member.performance < member.target) {
+    return { tone: "amber", text: `AVALIAR · ${percent(member.target - member.performance, 0)} abaixo da meta` };
+  }
+  if (member.roi >= 200) return { tone: "green", text: "SIM · Excelente ROI" };
+  if (member.roi >= 100) return { tone: "green", text: "SIM · Boa performance" };
+  return { tone: "blue", text: "OK · Dentro da meta" };
+}
+
+function SummaryCard({
+  icon,
+  tone,
+  label,
+  value,
+  hint,
+  meter,
+}: {
+  icon: React.ReactNode;
+  tone: string;
+  label: string;
+  value: string;
+  hint: string;
+  meter?: number;
+}) {
+  return (
+    <div className="kpi-card">
+      <div className="kpi-head">
+        <div className={`kpi-icon ${tone}`}>{icon}</div>
+        <div>
+          <div className="kpi-label">{label}</div>
+          <div className="kpi-value">{value}</div>
+        </div>
+      </div>
+      <div className="kpi-meter">
+        {meter !== undefined && (
+          <div className="bar">
+            <span style={{ width: `${Math.max(0, Math.min(100, meter))}%` }} />
+          </div>
+        )}
+        <span>{hint}</span>
+      </div>
     </div>
   );
 }

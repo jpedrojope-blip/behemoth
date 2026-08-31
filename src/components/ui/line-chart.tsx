@@ -99,7 +99,7 @@ export function LineChart({ labels, series, height = 240 }: Props) {
               x2={width - PADDING.right}
               y1={geometry.y(tick)}
               y2={geometry.y(tick)}
-              stroke={tick === 0 ? "#dde3ed" : "#eef1f6"}
+              stroke={tick === 0 ? "#22355c" : "#16243d"}
               strokeWidth={1}
             />
             <text x={PADDING.left - 10} y={geometry.y(tick) + 4} textAnchor="end" className="chart-tick">
@@ -114,7 +114,7 @@ export function LineChart({ labels, series, height = 240 }: Props) {
             x2={geometry.x(hover)}
             y1={PADDING.top}
             y2={height - PADDING.bottom}
-            stroke="#c3cede"
+            stroke="#365586"
             strokeWidth={1}
             strokeDasharray="4 4"
           />
@@ -142,7 +142,7 @@ export function LineChart({ labels, series, height = 240 }: Props) {
                   cx={geometry.x(index)}
                   cy={geometry.y(value)}
                   r={hover === index ? 5 : 3}
-                  fill="#fff"
+                  fill="#0f1c35"
                   stroke={entry.color}
                   strokeWidth={2}
                 />

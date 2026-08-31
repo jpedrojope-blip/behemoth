@@ -113,11 +113,9 @@ export default function ReunioesPage() {
     <div className="page-wrap">
       <div className="page-head">
         <div>
-          <p className="eyebrow">SALA DE REUNIÃO</p>
-          <h1 className="page-title">Notas, resumo e decisões</h1>
+          <h1 className="page-title">Sala de Reunião Inteligente</h1>
           <p className="subtitle">
-            {data?.openActionItems ?? 0} item(ns) de ação em aberto. O resumo é gerado localmente a partir das notas e da
-            transcrição.
+            Registre decisões e deixe o resumo e os itens de ação organizados automaticamente.
           </p>
         </div>
         <button className="btn btn-primary" onClick={() => setFormOpen((open) => !open)}>
@@ -125,7 +123,28 @@ export default function ReunioesPage() {
         </button>
       </div>
 
-      {error && <p className="form-error">{error}</p>}
+      <section className="hero">
+        <div>
+          <p className="card-kicker">REUNIÃO EM UM CLIQUE</p>
+          <h2>Anote, gere o resumo e distribua os responsáveis</h2>
+          <p>
+            O resumo é extraído das suas notas e da transcrição sem sair da máquina — nenhum dado é enviado para fora.
+            Cada item de ação com prazo vira uma tarefa no calendário automaticamente.
+          </p>
+          <button className="btn" onClick={() => setFormOpen(true)}>
+            <Plus size={16} /> Abrir nova reunião
+          </button>
+          <p className="small" style={{ margin: "14px 0 0", color: "#bfd4ff" }}>
+            {data?.openActionItems ?? 0} item(ns) de ação em aberto · Google Meet entra aqui quando o OAuth for
+            configurado
+          </p>
+        </div>
+        <div className="hero-art">
+          <Sparkles size={38} />
+        </div>
+      </section>
+
+      {error && <p className="form-error" style={{ marginTop: 16 }}>{error}</p>}
 
       {formOpen && (
         <form className="inline-form section" onSubmit={createMeeting}>
