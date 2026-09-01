@@ -20,9 +20,23 @@ function getPublicClient(): SupabaseClient {
 }
 
 export async function signIn(email: string, password: string) {
-  const { data, error } = await getPublicClient().auth.signInWithPassword({ email, password });
-  if (error || !data.session || !data.user) throw new Error(translateAuthError(error?.message ?? "E-mail ou senha inválidos."));
-  return data;
+  const client = getPublicClient();
+  const firstAttempt = await client.auth.signInWithPassword({ email, password });
+  if (firstAttempt.data.session && firstAttempt.data.user) return firstAttempt.data;
+
+  if (firstAttempt.error?.message.toLowerCase().includes("email not confirmed")) {
+    const admin = getSupabaseAdmin();
+    const lookup = await admin.auth.admin.getUserByEmail(email);
+    if (lookup.data.user) {
+      const confirmed = await admin.auth.admin.updateUserById(lookup.data.user.id, { email_confirm: true });
+      if (!confirmed.error) {
+        const retry = await client.auth.signInWithPassword({ email, password });
+        if (retry.data.session && retry.data.user) return retry.data;
+      }
+    }
+  }
+
+  throw new Error(translateAuthError(firstAttempt.error?.message ?? "E-mail ou senha inválidos."));
 }
 
 export async function signUp(email: string, password: string, name: string) {
