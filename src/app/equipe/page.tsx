@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { Donut } from "@/components/ui/donut";
+import { BarChart } from "@/components/ui/bar-chart";
 import { Gauge } from "@/components/ui/gauge";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, useResource } from "@/lib/client";
@@ -63,6 +64,7 @@ export default function EquipePage() {
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState<Filter>("todos");
   const [query, setQuery] = useState("");
+  const [detail, setDetail] = useState<{ title: string; body: string } | null>(null);
   const notify = useToast();
 
   useEffect(() => {
@@ -143,6 +145,7 @@ export default function EquipePage() {
           label="Total na Equipe"
           value={String(summary?.total ?? 0)}
           hint={`${summary?.humans ?? 0} humanos · ${summary?.agents ?? 0} agentes IA`}
+          onClick={() => setDetail({ title: "Total na equipe", body: `${summary?.humans ?? 0} pessoas e ${summary?.agents ?? 0} agentes de IA cadastrados.` })}
         />
         <SummaryCard
           icon={<DollarSign size={22} />}
@@ -150,6 +153,7 @@ export default function EquipePage() {
           label="Custo Total Mensal"
           value={brl(summary?.monthlyCost ?? 0)}
           hint={`Agentes ${brl(summary?.agentCost ?? 0)} · Pessoas ${brl(summary?.humanCost ?? 0)}`}
+          onClick={() => setDetail({ title: "Custo total mensal", body: `O custo mensal estimado é ${brl(summary?.monthlyCost ?? 0)}, sendo ${brl(summary?.humanCost ?? 0)} em pessoas e ${brl(summary?.agentCost ?? 0)} em agentes.` })}
         />
         <SummaryCard
           icon={<GaugeIcon size={22} />}
@@ -158,6 +162,7 @@ export default function EquipePage() {
           value={`${summary?.averagePerformance ?? 0}%`}
           hint={`${summary?.onTarget ?? 0} de ${summary?.total ?? 0} dentro da meta`}
           meter={summary?.averagePerformance ?? 0}
+          onClick={() => setDetail({ title: "Desempenho médio", body: `${summary?.onTarget ?? 0} de ${summary?.total ?? 0} integrantes estão dentro da meta. Média atual: ${summary?.averagePerformance ?? 0}%.` })}
         />
         <SummaryCard
           icon={<Target size={22} />}
@@ -166,11 +171,34 @@ export default function EquipePage() {
           value={`${summary?.averageRoi ?? 0}%`}
           hint="retorno estimado sobre o custo"
           meter={Math.min(100, summary?.averageRoi ?? 0)}
+          onClick={() => setDetail({ title: "Meta", body: `O retorno médio estimado sobre o custo está em ${summary?.averageRoi ?? 0}%.` })}
         />
       </section>
 
+      {detail && (
+        <div className="modal-backdrop" onClick={() => setDetail(null)}>
+          <section className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title" onClick={(event) => event.stopPropagation()}>
+            <button className="modal-close" onClick={() => setDetail(null)} aria-label="Fechar detalhes"><X size={18} /></button>
+            <p className="card-kicker">VISÃO DETALHADA</p>
+            <h2 id="detail-title">{detail.title}</h2>
+            <p>{detail.body}</p>
+            <div className="modal-chart">
+              <BarChart
+                labels={all.slice(0, 8).map((member) => member.name)}
+                series={[
+                  { label: "Desempenho", values: all.slice(0, 8).map((member) => member.performance), color: "#8b5cf6" },
+                  { label: "Meta", values: all.slice(0, 8).map((member) => member.target), color: "#22c55e" },
+                ]}
+                height={180}
+              />
+            </div>
+            <button className="btn btn-primary" onClick={() => setDetail(null)}>Entendi</button>
+          </section>
+        </div>
+      )}
+
       {formOpen && (
-        <form className="inline-form section" onSubmit={submit}>
+        <form className="inline-form section team-form" onSubmit={submit}>
           <div className="form-grid">
             <div className="field">
               <label htmlFor="name">Nome</label>
@@ -464,6 +492,7 @@ function SummaryCard({
   value,
   hint,
   meter,
+  onClick,
 }: {
   icon: React.ReactNode;
   tone: string;
@@ -471,9 +500,10 @@ function SummaryCard({
   value: string;
   hint: string;
   meter?: number;
+  onClick?: () => void;
 }) {
   return (
-    <div className="kpi-card">
+    <button className="kpi-card kpi-card-button" onClick={onClick} type="button">
       <div className="kpi-head">
         <div className={`kpi-icon ${tone}`}>{icon}</div>
         <div>
@@ -489,6 +519,6 @@ function SummaryCard({
         )}
         <span>{hint}</span>
       </div>
-    </div>
+    </button>
   );
 }

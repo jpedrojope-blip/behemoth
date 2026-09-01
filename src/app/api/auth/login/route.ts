@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { permissionsFor } from "@/lib/auth";
 import { loginSchema, parseBody } from "@/lib/schemas";
-import { getDatabase } from "@/lib/store";
-import type { Role } from "@/lib/types";
+import { signIn, sessionCookieValue } from "@/lib/supabase-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -10,12 +8,19 @@ export async function POST(request: Request) {
   const parsed = await parseBody(request, loginSchema);
   if (!parsed.ok) return parsed.response;
 
-  const db = getDatabase();
-  const role: Role = parsed.data.email.includes("admin") ? "ADMIN" : db.company.ownerRole;
+  let data;
+  try { data = await signIn(parsed.data.email, parsed.data.password); }
+  catch { return NextResponse.json({ error: "E-mail ou senha inválidos." }, { status: 401 }); }
 
-  return NextResponse.json({
-    user: { id: "user_current", name: db.company.ownerName, email: parsed.data.email, role, companyId: db.company.id },
-    permissions: permissionsFor(role),
-    note: "Sessão local de demonstração. Conecte o Supabase Auth para autenticação real.",
+  const response = NextResponse.json({
+    user: { id: data.user.id, name: data.user.user_metadata.name ?? data.user.email, email: data.user.email },
   });
+  response.cookies.set("behemoth_session", sessionCookieValue(data.session.access_token, data.session.refresh_token), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 60 * 60 * 24 * 7,
+    path: "/",
+  });
+  return response;
 }

@@ -55,6 +55,7 @@ const AGENDA_COLORS: Record<CalendarEvent["kind"], string> = {
 export default function DashboardPage() {
   const [period, setPeriod] = useState<Period>("mes");
   const [insightIndex, setInsightIndex] = useState(0);
+  const [kpiDetail, setKpiDetail] = useState<{ title: string; body: string } | null>(null);
   const { data, loading, error } = useResource<Overview>(`/api/overview?period=${period}`);
   const notify = useToast();
 
@@ -153,6 +154,7 @@ export default function DashboardPage() {
           meterLabel={data ? `${signedPercent(data.comparison.revenue)} vs. anterior` : "—"}
           positive={(data?.comparison.revenue ?? 0) >= 0}
           href="/financeiro"
+          onClick={() => setKpiDetail({ title: "Receita", body: `Total de entradas no período: ${brl(revenue)}. ${data ? `Variação de ${signedPercent(data.comparison.revenue)} em relação ao período anterior.` : ""}` })}
         />
         <Kpi
           icon={<Wallet size={22} />}
@@ -164,6 +166,7 @@ export default function DashboardPage() {
           meterLabel={revenue ? `${percent((costs / revenue) * 100, 0)} da receita` : "sem receita no período"}
           barTone="amber"
           href="/financeiro"
+          onClick={() => setKpiDetail({ title: "Custos", body: `Total de despesas no período: ${brl(costs)}. ${revenue ? `Isso representa ${percent((costs / revenue) * 100, 0)} da receita.` : "Ainda não há receita para comparar."}` })}
         />
         <Kpi
           icon={<Users size={22} />}
@@ -175,6 +178,7 @@ export default function DashboardPage() {
           meterLabel={`${brl(data?.team.monthlyCost ?? 0)} por mês`}
           barTone="purple"
           href="/equipe"
+          onClick={() => setKpiDetail({ title: "Clientes ativos", body: `${data?.team.total ?? 0} integrantes cadastrados: ${data?.team.humans ?? 0} pessoas e ${data?.team.agents ?? 0} agentes de IA.` })}
         />
         <Kpi
           icon={<TrendingUp size={22} />}
@@ -186,8 +190,11 @@ export default function DashboardPage() {
           meterLabel={`${percent((financials?.netMargin ?? 0) * 100)} de margem`}
           barTone="green"
           href="/financeiro"
+          onClick={() => setKpiDetail({ title: "Lucro líquido", body: `Resultado após custos: ${brl(financials?.netProfit ?? 0)}, com margem de ${percent((financials?.netMargin ?? 0) * 100)}.` })}
         />
       </section>
+
+      {kpiDetail && <div className="modal-backdrop" onClick={() => setKpiDetail(null)}><section className="detail-modal detail-modal-chart" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setKpiDetail(null)} aria-label="Fechar"><span>×</span></button><p className="card-kicker">VISÃO DETALHADA</p><h2>{kpiDetail.title}</h2><p>{kpiDetail.body}</p><div className="modal-chart"><BarChart labels={(data?.series ?? []).map((point) => point.label)} series={[{ label: "Receita", values: (data?.series ?? []).map((point) => point.income), color: "#3b82f6" }, { label: "Custos", values: (data?.series ?? []).map((point) => point.expense), color: "#f5a524" }, { label: "Lucro", values: (data?.series ?? []).map((point) => point.profit), color: "#22c55e" }]} height={180} highlightLast /></div><button className="btn btn-primary" onClick={() => setKpiDetail(null)}>Entendi</button></section></div>}
 
       <section className="content-grid">
         <div className="card">
@@ -394,6 +401,7 @@ function Kpi({
   barTone,
   positive = true,
   href,
+  onClick,
 }: {
   icon: React.ReactNode;
   tone: string;
@@ -405,9 +413,10 @@ function Kpi({
   barTone?: string;
   positive?: boolean;
   href: string;
+  onClick?: () => void;
 }) {
   return (
-    <Link className="kpi-card" href={href}>
+    <Link className="kpi-card" href={href} onClick={(event) => { if (onClick) { event.preventDefault(); onClick(); } }}>
       <div className="kpi-head">
         <div className={`kpi-icon ${tone}`}>{icon}</div>
         <div>

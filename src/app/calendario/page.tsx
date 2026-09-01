@@ -137,7 +137,7 @@ export default function CalendarioPage() {
       {error && <p className="form-error">{error}</p>}
 
       {formOpen && (
-        <form className="inline-form section" onSubmit={submit}>
+        <form className="inline-form section calendar-form" onSubmit={submit}>
           <div className="form-grid">
             <div className="field">
               <label htmlFor="title">Título</label>

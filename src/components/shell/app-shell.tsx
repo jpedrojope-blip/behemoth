@@ -52,16 +52,30 @@ type ShellData = { company: Company; openActionItems: number };
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(264);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window === "undefined") return 264;
+    const saved = Number(window.localStorage.getItem("behemoth-sidebar-width"));
+    return saved >= 220 && saved <= 380 ? saved : 264;
+  });
+  const [authReady, setAuthReady] = useState(pathname === "/login");
   const [shell, setShell] = useState<ShellData | null>(null);
   const dataVersion = useDataVersion();
 
   useAutoRevalidate();
 
   useEffect(() => {
-    const saved = Number(window.localStorage.getItem("behemoth-sidebar-width"));
-    if (saved >= 220 && saved <= 380) setSidebarWidth(saved);
-  }, []);
+    if (pathname === "/login") return;
+    let active = true;
+    fetch("/api/auth/session", { cache: "no-store" })
+      .then((response) => response.json() as Promise<{ authenticated: boolean }>)
+      .then((session) => {
+        if (!active) return;
+        if (!session.authenticated) window.location.replace("/login");
+        else setAuthReady(true);
+      })
+      .catch(() => window.location.replace("/login"));
+    return () => { active = false; };
+  }, [pathname]);
 
   function resizeSidebar(event: React.PointerEvent<HTMLDivElement>) {
     const move = (moveEvent: PointerEvent) => {
@@ -93,6 +107,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const current = findNavItem(pathname);
   const company = shell?.company;
   const close = () => setMenuOpen(false);
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.replace("/login");
+  }
+
+  if (pathname === "/login") return <ToastProvider>{children}</ToastProvider>;
+  if (!authReady) return <ToastProvider><div className="auth-loading">Carregando seu workspace...</div></ToastProvider>;
 
   async function patchCompany(body: Partial<Company>) {
     try {
@@ -227,6 +249,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
                 <ChevronDown size={15} />
               </Link>
+              <button className="logout-button" onClick={logout} title="Sair">Sair</button>
             </div>
           </header>
 
