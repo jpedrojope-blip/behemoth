@@ -7,6 +7,8 @@ import {
   Check,
   ChevronDown,
   Coins,
+  FileText,
+  Upload,
   Plus,
   Receipt,
   Repeat,
@@ -61,6 +63,8 @@ export default function FinanceiroPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<"report" | "pdf">("report");
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
   const notify = useToast();
 
   const { data, loading, error } = useResource<Payload>(
@@ -140,6 +144,40 @@ export default function FinanceiroPage() {
 
       {error && <p className="form-error">{error}</p>}
 
+      <div className="tabs" role="tablist" aria-label="Área financeira">
+        <button className={`tab ${activeTab === "report" ? "active" : ""}`} onClick={() => setActiveTab("report")} role="tab" aria-selected={activeTab === "report"}>
+          Visão geral
+        </button>
+        <button className={`tab ${activeTab === "pdf" ? "active" : ""}`} onClick={() => setActiveTab("pdf")} role="tab" aria-selected={activeTab === "pdf"}>
+          <FileText size={15} /> Importar PDF
+        </button>
+      </div>
+
+      {activeTab === "pdf" && (
+        <section className="section card pdf-import-card">
+          <div className="card-head">
+            <div>
+              <p className="card-kicker">IMPORTAÇÃO DE DADOS</p>
+              <h2>Adicione um relatório em PDF</h2>
+              <p className="small muted">Envie um extrato ou relatório financeiro para usar as informações no seu painel.</p>
+            </div>
+          </div>
+          <label className="pdf-dropzone" htmlFor="financial-pdf">
+            <Upload size={25} />
+            <strong>{pdfFile ? pdfFile.name : "Selecione ou arraste seu PDF aqui"}</strong>
+            <span>{pdfFile ? `${(pdfFile.size / 1024 / 1024).toFixed(2)} MB · pronto para importar` : "Formato PDF · máximo recomendado de 10 MB"}</span>
+            <input id="financial-pdf" type="file" accept="application/pdf,.pdf" onChange={(event) => setPdfFile(event.target.files?.[0] ?? null)} />
+          </label>
+          <div className="pdf-import-actions">
+            <button className="btn btn-primary" disabled={!pdfFile} onClick={() => notify("PDF recebido. A leitura das informações será processada em seguida.", "success")}>
+              Adicionar informações
+            </button>
+            {pdfFile && <button className="btn btn-ghost" onClick={() => setPdfFile(null)}>Remover arquivo</button>}
+          </div>
+        </section>
+      )}
+
+      {activeTab === "report" && <>
       <section className="kpi-grid">
         <FinanceCard
           icon={<BadgeDollarSign size={22} />}
@@ -174,7 +212,9 @@ export default function FinanceiroPage() {
           positive={margin >= 0}
         />
       </section>
+      </>}
 
+      {activeTab === "report" && <>
       <section className="section split">
         <div className="card">
           <div className="card-head">
@@ -223,6 +263,7 @@ export default function FinanceiroPage() {
           )}
         </div>
       </section>
+      </>}
 
       <section className="section split">
         <div className="card">

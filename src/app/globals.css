@@ -81,7 +81,7 @@ button {
 }
 
 .sidebar {
-  width: 264px;
+  width: var(--sidebar-width, 264px);
   position: fixed;
   inset: 0 auto 0 0;
   z-index: 20;
@@ -93,9 +93,24 @@ button {
   overflow-y: auto;
 }
 
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  right: -5px;
+  width: 10px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 25;
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer:active {
+  background: #3b82f633;
+}
+
 .main-content {
-  margin-left: 264px;
-  width: calc(100% - 264px);
+  margin-left: var(--sidebar-width, 264px);
+  width: calc(100% - var(--sidebar-width, 264px));
   display: flex;
   flex-direction: column;
   min-height: 100vh;
@@ -308,7 +323,15 @@ button {
 .brand {
   display: flex;
   align-items: center;
-  gap: 11px;
+  width: 174px;
+  height: 42px;
+}
+
+.brand-logo {
+  width: 174px;
+  height: 42px;
+  object-fit: contain;
+  object-position: left center;
 }
 
 .brand-mark {
@@ -590,6 +613,7 @@ button {
   text-align: left;
   box-shadow: var(--shadow);
   transition: transform 0.18s, border-color 0.18s;
+  min-height: 262px;
 }
 
 .kpi-card:hover {
@@ -1711,9 +1735,59 @@ button {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   margin-top: 18px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius);
+  border: 1px solid #20375f;
+  border-radius: 14px;
   overflow: hidden;
+  background: #0a1730;
+  box-shadow: 0 14px 32px #02081740;
+}
+
+.pdf-import-card {
+  max-width: 760px;
+}
+
+.pdf-dropzone {
+  margin-top: 20px;
+  min-height: 190px;
+  border: 1px dashed #3569b4;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #10284d 0%, #0c1d39 100%);
+  color: var(--blue-bright);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.18s, background 0.18s, transform 0.18s;
+}
+
+.pdf-dropzone:hover {
+  border-color: #5d91e8;
+  background: #15325d;
+  transform: translateY(-1px);
+}
+
+.pdf-dropzone strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.pdf-dropzone span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pdf-dropzone input {
+  display: none;
+}
+
+.pdf-import-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  flex-wrap: wrap;
 }
 
 .calendar-weekday {
@@ -1725,21 +1799,21 @@ button {
   padding: 13px 0;
   text-transform: uppercase;
   border-bottom: 1px solid var(--line-soft);
-  background: var(--surface-2);
+  background: linear-gradient(180deg, #172d53 0%, #122544 100%);
 }
 
 .calendar-cell {
-  min-height: 104px;
+  min-height: 96px;
   border-right: 1px solid var(--line-soft);
   border-bottom: 1px solid var(--line-soft);
-  background: var(--surface);
+  background: linear-gradient(145deg, #0e203f 0%, #0b1a35 100%);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
   padding: 9px;
   text-align: left;
-  transition: background 0.15s;
+  transition: background 0.18s, box-shadow 0.18s, transform 0.18s;
 }
 
 .calendar-cell:nth-child(7n) {
@@ -1747,21 +1821,24 @@ button {
 }
 
 .calendar-cell:hover {
-  background: var(--surface-2);
+  background: #152c52;
+  box-shadow: inset 0 0 0 1px #2b5ca0;
+  transform: translateY(-1px);
 }
 
 .calendar-cell.empty-cell {
-  background: #0b1730;
+  background: #09162d;
 }
 
 .calendar-cell.today .calendar-day {
   background: var(--blue);
   color: #fff;
+  box-shadow: 0 0 0 4px #246bfd33;
 }
 
 .calendar-cell.selected {
-  background: #13294e;
-  box-shadow: inset 0 0 0 1px var(--blue);
+  background: linear-gradient(145deg, #183663 0%, #12294d 100%);
+  box-shadow: inset 0 0 0 1.5px var(--blue), inset 0 0 24px #246bfd1c;
 }
 
 .calendar-day {
@@ -1772,6 +1849,7 @@ button {
   display: grid;
   place-items: center;
   color: var(--ink-dim);
+  flex: none;
 }
 
 .calendar-dots {
@@ -1990,6 +2068,9 @@ button {
   .sidebar-backdrop {
     display: block;
   }
+  .sidebar-resizer {
+    display: none;
+  }
   .main-content {
     margin-left: 0;
     width: 100%;
@@ -2001,7 +2082,7 @@ button {
     padding: 0 18px;
     gap: 12px;
   }
-  .brand span,
+  .brand-logo,
   .plan-select,
   .user-chip small,
   .user-chip strong {

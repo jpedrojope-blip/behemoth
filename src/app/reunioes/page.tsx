@@ -319,8 +319,8 @@ export default function ReunioesPage() {
         <div className="card">
           <div className="card-head">
             <div>
-              <p className="card-kicker">HISTÓRICO</p>
-              <h2>Reuniões</h2>
+              <p className="card-kicker">HISTÓRICO COMPLETO</p>
+              <h2>Reuniões anteriores</h2>
             </div>
           </div>
           <div style={{ marginTop: 10 }}>

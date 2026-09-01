@@ -8,7 +8,7 @@ export type NavItem = {
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Início", icon: "dashboard", section: "workspace" },
   { href: "/calendario", label: "Calendário", icon: "calendar", section: "workspace" },
-  { href: "/equipe", label: "Equipe & Agentes", icon: "users", section: "workspace" },
+  { href: "/equipe", label: "Clientes ativos", icon: "users", section: "workspace" },
   { href: "/reunioes", label: "Sala de Reunião", icon: "meeting", section: "workspace" },
   { href: "/financeiro", label: "Relatório", icon: "wallet", section: "workspace" },
   { href: "/ajuda", label: "Help center", icon: "help", section: "conta" },

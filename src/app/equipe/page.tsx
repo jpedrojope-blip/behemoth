@@ -162,7 +162,7 @@ export default function EquipePage() {
         <SummaryCard
           icon={<Target size={22} />}
           tone="green"
-          label="ROI Médio"
+          label="Meta"
           value={`${summary?.averageRoi ?? 0}%`}
           hint="retorno estimado sobre o custo"
           meter={Math.min(100, summary?.averageRoi ?? 0)}

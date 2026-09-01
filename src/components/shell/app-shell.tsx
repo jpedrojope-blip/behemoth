@@ -52,10 +52,31 @@ type ShellData = { company: Company; openActionItems: number };
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(264);
   const [shell, setShell] = useState<ShellData | null>(null);
   const dataVersion = useDataVersion();
 
   useAutoRevalidate();
+
+  useEffect(() => {
+    const saved = Number(window.localStorage.getItem("behemoth-sidebar-width"));
+    if (saved >= 220 && saved <= 380) setSidebarWidth(saved);
+  }, []);
+
+  function resizeSidebar(event: React.PointerEvent<HTMLDivElement>) {
+    const move = (moveEvent: PointerEvent) => {
+      const next = Math.min(380, Math.max(220, moveEvent.clientX));
+      setSidebarWidth(next);
+      window.localStorage.setItem("behemoth-sidebar-width", String(next));
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
 
   useEffect(() => {
     let active = true;
@@ -83,7 +104,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <ToastProvider>
-      <div className="app-shell">
+      <div className="app-shell" style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}>
         <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
           <Link href="/configuracoes" className="sidebar-user" onClick={close}>
             <div className="avatar">{initials(company?.ownerName ?? "")}</div>
@@ -161,6 +182,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Link>
             </div>
           </div>
+          <div className="sidebar-resizer" onPointerDown={resizeSidebar} role="separator" aria-label="Redimensionar menu lateral" />
         </aside>
 
         {menuOpen && <button className="sidebar-backdrop" aria-label="Fechar menu" onClick={close} />}
@@ -172,8 +194,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </button>
 
             <Link href="/" className="brand">
-              <div className="brand-mark">B</div>
-              <span>Behemoth</span>
+              <img className="brand-logo" src="/brand/behemoth-logo.png" alt="Behemoth" />
             </Link>
 
             <div className="plan-select">

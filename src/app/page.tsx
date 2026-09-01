@@ -168,7 +168,7 @@ export default function DashboardPage() {
         <Kpi
           icon={<Users size={22} />}
           tone="purple"
-          label="Equipe e Agentes"
+          label="Clientes ativos"
           sub={`${data?.team.humans ?? 0} humanos · ${data?.team.agents ?? 0} agentes IA`}
           value={String(data?.team.total ?? 0)}
           meter={data?.team.total ? ((data.team.agents ?? 0) / data.team.total) * 100 : 0}
