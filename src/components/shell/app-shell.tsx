@@ -209,7 +209,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </option>
                 ))}
               </select>
-              <ChevronDown size={15} />
             </div>
 
             <div className="top-actions">
