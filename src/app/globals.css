@@ -1734,6 +1734,8 @@ button {
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: 42px;
+  grid-auto-rows: 96px;
   margin-top: 18px;
   border: 1px solid #20375f;
   border-radius: 14px;
@@ -1803,7 +1805,8 @@ button {
 }
 
 .calendar-cell {
-  min-height: 96px;
+  height: 96px;
+  min-height: 0;
   border-right: 1px solid var(--line-soft);
   border-bottom: 1px solid var(--line-soft);
   background: linear-gradient(145deg, #0e203f 0%, #0b1a35 100%);
@@ -1814,6 +1817,7 @@ button {
   padding: 9px;
   text-align: left;
   transition: background 0.18s, box-shadow 0.18s, transform 0.18s;
+  overflow: hidden;
 }
 
 .calendar-cell:nth-child(7n) {
@@ -1858,6 +1862,8 @@ button {
   gap: 4px;
   width: 100%;
   margin-top: auto;
+  max-height: 54px;
+  overflow: hidden;
 }
 
 .calendar-chip {
@@ -2110,8 +2116,11 @@ button {
     grid-template-columns: 1fr;
   }
   .calendar-cell {
-    min-height: 74px;
+    height: 74px;
     padding: 5px;
+  }
+  .calendar-grid {
+    grid-auto-rows: 74px;
   }
   .calendar-chip {
     display: none;
