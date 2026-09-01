@@ -26,9 +26,10 @@ export async function signIn(email: string, password: string) {
 
   if (firstAttempt.error?.message.toLowerCase().includes("email not confirmed")) {
     const admin = getSupabaseAdmin();
-    const lookup = await admin.auth.admin.getUserByEmail(email);
-    if (lookup.data.user) {
-      const confirmed = await admin.auth.admin.updateUserById(lookup.data.user.id, { email_confirm: true });
+    const lookup = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    const existingUser = lookup.data.users.find((user) => user.email?.toLowerCase() === email.toLowerCase());
+    if (existingUser) {
+      const confirmed = await admin.auth.admin.updateUserById(existingUser.id, { email_confirm: true });
       if (!confirmed.error) {
         const retry = await client.auth.signInWithPassword({ email, password });
         if (retry.data.session && retry.data.user) return retry.data;
