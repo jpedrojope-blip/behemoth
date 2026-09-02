@@ -33,8 +33,7 @@ export function LineChart({ labels, series, height = 240 }: Props) {
     const values = series.flatMap((entry) => entry.values);
     const rawMax = Math.max(...values, 0);
     const rawMin = Math.min(...values, 0);
-    const scale = niceScale(rawMax);
-    const top = scale.max;
+    const top = niceScale(rawMax).max;
     const bottom = rawMin < 0 ? -niceScale(Math.abs(rawMin)).max : 0;
     const span = top - bottom || 1;
 
@@ -45,10 +44,7 @@ export function LineChart({ labels, series, height = 240 }: Props) {
     const x = (index: number) => PADDING.left + (index / (count - 1)) * plotWidth;
     const y = (value: number) => PADDING.top + (1 - (value - bottom) / span) * plotHeight;
 
-    const ticks: number[] = [];
-    for (let value = bottom; value <= top + scale.step / 2; value += scale.step) {
-      ticks.push(Math.round(value));
-    }
+    const ticks = Array.from({ length: 5 }, (_, index) => Math.round(bottom + (span * index) / 4));
 
     return { x, y, ticks, plotWidth, plotHeight, hasData: rawMax > 0 || rawMin < 0 };
   }, [series, labels.length, width, height]);

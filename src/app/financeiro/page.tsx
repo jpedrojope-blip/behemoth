@@ -18,7 +18,6 @@ import {
   Zap,
 } from "lucide-react";
 import { Donut } from "@/components/ui/donut";
-import { Gauge } from "@/components/ui/gauge";
 import { LineChart } from "@/components/ui/line-chart";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, useResource } from "@/lib/client";
@@ -44,6 +43,20 @@ type Payload = {
   automated: number;
 };
 
+type PdfAnalysis = { summary: { grossRevenue: number; taxes: number; netRevenue: number; cmv: number; grossProfit: number; operatingExpenses: number; netProfit: number; grossMargin: number | null; netMargin: number | null; operationalCashFlow: number; freeCashFlow: number; projectedFixedOutflow: number }; warnings: string[] };
+
+function summaryTransactions(analysis: PdfAnalysis) {
+  const now = new Date();
+  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const values: Array<[string, number, Transaction["kind"], string]> = [
+    ["Receita bruta importada", analysis.summary.grossRevenue, "INCOME", "Receita"],
+    ["Impostos sobre receita importados", analysis.summary.taxes, "EXPENSE", "IMPOSTO"],
+    ["CMV e custos importados", analysis.summary.cmv, "EXPENSE", "CMV"],
+    ["Despesas operacionais importadas", analysis.summary.operatingExpenses, "EXPENSE", "Despesas operacionais"],
+  ];
+  return values.filter(([, value]) => value > 0).map(([description, amount, kind, category]) => ({ date, description, amount, kind, category }));
+}
+
 const EMPTY_FORM = {
   description: "",
   amount: "",
@@ -54,7 +67,12 @@ const EMPTY_FORM = {
   recurrence: "NONE" as NonNullable<Transaction["recurrence"]>,
 };
 
-const CATEGORY_COLORS = ["#2563eb", "#3b82f6", "#8b5cf6", "#f5a524", "#22c55e", "#64748b", "#0ea5e9"];
+function expenseHealthColor(amount: number, revenue: number) {
+  const ratio = revenue ? amount / revenue : 0;
+  if (ratio > 0.4) return "#ef4444";
+  if (ratio > 0.2) return "#f5a524";
+  return "#22c55e";
+}
 
 export default function FinanceiroPage() {
   const [period, setPeriod] = useState<Period>("mes");
@@ -65,9 +83,9 @@ export default function FinanceiroPage() {
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<"report" | "pdf">("report");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
-  const [pdfText, setPdfText] = useState("");
   const [processingPdf, setProcessingPdf] = useState(false);
   const [pdfTransactions, setPdfTransactions] = useState<Array<Pick<Transaction, "date" | "description" | "amount" | "kind" | "category">>>([]);
+  const [pdfAnalysis, setPdfAnalysis] = useState<PdfAnalysis | null>(null);
   const notify = useToast();
 
   const { data, loading, error } = useResource<Payload>(
@@ -100,35 +118,23 @@ export default function FinanceiroPage() {
       const body = new FormData();
       body.append("file", pdfFile);
       const response = await fetch("/api/finance/pdf", { method: "POST", body });
-      const payload = (await response.json()) as { error?: string; text?: string; transactions?: typeof pdfTransactions };
+      const payload = (await response.json()) as { error?: string; text?: string; transactions?: typeof pdfTransactions; analysis?: PdfAnalysis };
       if (!response.ok) throw new Error(payload.error ?? "Não foi possível processar o PDF.");
-      setPdfText(payload.text ?? "");
-      setPdfTransactions(payload.transactions ?? []);
-      notify("PDF lido com sucesso. Revise as informações antes de lançar.", "success");
+      const extracted = payload.transactions ?? [];
+      const imported = extracted.length ? extracted : payload.analysis ? summaryTransactions(payload.analysis) : [];
+      for (const item of imported) {
+        await apiFetch("/api/transactions", {
+          method: "POST",
+          body: JSON.stringify({ ...item, status: "CONFIRMED", source: "PDF" }),
+        });
+      }
+      setPdfTransactions(imported);
+      setPdfAnalysis(payload.analysis ?? null);
+      notify(imported.length ? `${imported.length} informação(ões) do arquivo foram adicionadas ao painel.` : "Arquivo lido, mas não havia valores para importar.", imported.length ? "success" : "error");
     } catch (cause) {
       notify(cause instanceof Error ? cause.message : "Erro ao processar PDF.", "error");
     } finally {
       setProcessingPdf(false);
-    }
-  }
-
-  async function importPdfTransactions() {
-    setSaving(true);
-    try {
-      for (const item of pdfTransactions) {
-        await apiFetch("/api/transactions", {
-          method: "POST",
-          body: JSON.stringify({ ...item, status: "PENDING", source: "PDF" }),
-        });
-      }
-      notify(`${pdfTransactions.length} lançamento(s) importado(s).`, "success");
-      setPdfTransactions([]);
-      setPdfText("");
-      setPdfFile(null);
-    } catch (cause) {
-      notify(cause instanceof Error ? cause.message : "Erro ao importar lançamentos.", "error");
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -225,11 +231,23 @@ export default function FinanceiroPage() {
                 ))}
               </div>
               {pdfTransactions.length > 8 && <p className="small muted">+ {pdfTransactions.length - 8} lançamento(s) adicionais</p>}
-              <p className="small muted">Os lançamentos serão adicionados como pendentes para você revisar.</p>
-              <button className="btn btn-primary" onClick={importPdfTransactions} disabled={saving}>Importar para lançamentos</button>
+              <p className="small muted">Essas informações já foram adicionadas ao painel e aos gráficos deste período.</p>
             </div>
           )}
-          {!pdfTransactions.length && pdfText && <div className="pdf-result"><strong>Texto extraído</strong><pre>{pdfText}</pre></div>}
+          {pdfAnalysis && (
+            <div className="pdf-result pdf-analysis">
+              <strong>Análise contábil identificada</strong>
+              <div className="pdf-analysis-grid">
+                <span>Receita bruta <b>{brl(pdfAnalysis.summary.grossRevenue)}</b></span><span>Impostos <b>{brl(pdfAnalysis.summary.taxes)}</b></span>
+                <span>Receita líquida <b>{brl(pdfAnalysis.summary.netRevenue)}</b></span><span>CMV e custos <b>{brl(pdfAnalysis.summary.cmv)}</b></span>
+                <span>Lucro bruto <b>{brl(pdfAnalysis.summary.grossProfit)}</b></span><span>Despesas operacionais <b>{brl(pdfAnalysis.summary.operatingExpenses)}</b></span>
+                <span>Lucro líquido <b>{brl(pdfAnalysis.summary.netProfit)}</b></span><span>Fluxo de caixa livre <b>{brl(pdfAnalysis.summary.freeCashFlow)}</b></span>
+              </div>
+              <p className="small muted">DRE: competência · DFC: caixa · Margem bruta: {pdfAnalysis.summary.grossMargin === null ? "—" : percent(pdfAnalysis.summary.grossMargin / 100)} · Margem líquida: {pdfAnalysis.summary.netMargin === null ? "—" : percent(pdfAnalysis.summary.netMargin / 100)}</p>
+              {pdfAnalysis.warnings.map((warning) => <p className="small muted" key={warning}>{warning}</p>)}
+            </div>
+          )}
+          {pdfAnalysis && !pdfTransactions.length && <div className="pdf-result"><strong>Não encontramos valores financeiros importáveis neste arquivo.</strong><p className="small muted">Tente enviar um PDF com valores ou uma planilha com os números preenchidos.</p></div>}
         </section>
       )}
 
@@ -285,10 +303,11 @@ export default function FinanceiroPage() {
             <LineChart
               labels={(data?.series ?? []).map((point) => point.label)}
               series={[
-                { label: "Receita", values: (data?.series ?? []).map((point) => point.income), color: "#2563eb", fill: true },
-                { label: "Custos", values: (data?.series ?? []).map((point) => point.expense), color: "#f5a524" },
-                { label: "Lucro", values: (data?.series ?? []).map((point) => point.profit), color: "#22c55e" },
+                { label: "Receita", values: (data?.series ?? []).map((point) => point.income), color: "#3b82f6", fill: true },
+                { label: "Custos", values: (data?.series ?? []).map((point) => -point.expense), color: "#ef4444" },
+                { label: "Resultado", values: (data?.series ?? []).map((point) => point.profit), color: (financials?.netProfit ?? 0) >= 0 ? "#22c55e" : "#f97316" },
               ]}
+              height={250}
             />
           )}
         </div>
@@ -302,10 +321,10 @@ export default function FinanceiroPage() {
           </div>
           {data?.expensesByCategory.length ? (
             <Donut
-              slices={data.expensesByCategory.map((entry, index) => ({
+              slices={data.expensesByCategory.map((entry) => ({
                 label: entry.category,
                 value: entry.amount,
-                color: CATEGORY_COLORS[index % CATEGORY_COLORS.length],
+                color: expenseHealthColor(entry.amount, revenue),
               }))}
               centerValue={brl(costs)}
               centerLabel="Total"
@@ -344,7 +363,27 @@ export default function FinanceiroPage() {
                   <td className="num">{brlExact(revenue)}</td>
                   <td className="num">100,0%</td>
                 </tr>
-                {(data?.expensesByCategory ?? []).map((entry) => (
+                <tr>
+                  <td style={{ paddingLeft: 26, color: "var(--muted)" }}>(−) Impostos sobre receita</td>
+                  <td className="num" style={{ color: "#ff8f7a" }}>−{brlExact(financials?.taxes ?? 0)}</td>
+                  <td className="num">{revenue ? percent(((financials?.taxes ?? 0) / revenue) * 100) : "—"}</td>
+                </tr>
+                <tr>
+                  <td><strong>= Receita líquida</strong></td>
+                  <td className="num"><strong>{brlExact(financials?.netRevenue ?? 0)}</strong></td>
+                  <td className="num"><strong>{revenue ? percent(((financials?.netRevenue ?? 0) / revenue) * 100) : "—"}</strong></td>
+                </tr>
+                <tr>
+                  <td style={{ paddingLeft: 26, color: "var(--muted)" }}>(−) CMV e custos variáveis</td>
+                  <td className="num" style={{ color: "#ff8f7a" }}>−{brlExact(financials?.cmv ?? 0)}</td>
+                  <td className="num">{revenue ? percent(((financials?.cmv ?? 0) / revenue) * 100) : "—"}</td>
+                </tr>
+                <tr>
+                  <td><strong>= Lucro bruto</strong></td>
+                  <td className="num"><strong>{brlExact(financials?.grossProfit ?? 0)}</strong></td>
+                  <td className="num"><strong>{percent(((financials?.grossMargin ?? 0) * 100))}</strong></td>
+                </tr>
+                {(data?.expensesByCategory ?? []).filter((entry) => !/imposto|tribut|simples|cmv|custo|fornecedor|embalag/i.test(entry.category)).map((entry) => (
                   <tr key={entry.category}>
                     <td style={{ paddingLeft: 26, color: "var(--muted)" }}>(−) {entry.category}</td>
                     <td className="num" style={{ color: "#ff8f7a" }}>
@@ -613,14 +652,19 @@ function FinanceCard({
 }
 
 function Indicator({ value, label, hint, color }: { value: number; label: string; hint: string; color: string }) {
+  const intensity = Math.min(Math.abs(value), 100);
+  const state = value < 0 ? "Atenção" : value > 70 && label.includes("custos") ? "Atenção" : "Saudável";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-      <Gauge value={Math.abs(value)} label="" size={76} color={color} />
-      <div>
+    <div style={{ display: "grid", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
         <strong style={{ fontSize: 13.5 }}>{label}</strong>
-        <div className="small muted" style={{ marginTop: 4 }}>
-          {hint}
-        </div>
+        <strong style={{ color, fontSize: 16 }}>{percent(value)}</strong>
+      </div>
+      <div style={{ height: 7, borderRadius: 999, overflow: "hidden", background: "#16264a" }} aria-label={`${label}: ${percent(value)}`}>
+        <span style={{ display: "block", width: `${intensity}%`, height: "100%", borderRadius: "inherit", background: color }} />
+      </div>
+      <div className="small muted" style={{ marginTop: 1 }}>
+        {state} · {hint}
       </div>
     </div>
   );

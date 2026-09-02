@@ -146,6 +146,7 @@ button {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  background: #fff;
 }
 
 .page-wrap {
@@ -154,6 +155,12 @@ button {
   max-width: 1560px;
   width: 100%;
   margin: 0 auto;
+  color: #0a1222;
+}
+
+.page-wrap .card,
+.page-wrap .kpi-card {
+  color: var(--ink);
 }
 
 .app-footer {
@@ -742,6 +749,26 @@ button {
   color: var(--blue-bright);
 }
 
+.kpi-sparkline {
+  display: none;
+  width: 100%;
+  height: 96px;
+  margin-top: 14px;
+  overflow: visible;
+}
+
+.kpi-card[aria-expanded="true"] .kpi-sparkline {
+  display: block;
+}
+
+.kpi-expanded-chart {
+  width: 100%;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+.kpi-expanded-chart .chart-shell { min-height: 155px; }
+
 /* ==========================================================================
    Botões e controles
    ========================================================================== */
@@ -980,7 +1007,7 @@ button {
   margin-bottom: 20px;
 }
 
-.kpi-card-button { width: 100%; cursor: pointer; }
+.kpi-card-button { width: 100%; cursor: pointer; color: inherit; font: inherit; }
 .kpi-card-button:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 3px; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; background: #020817b8; backdrop-filter: blur(6px); }
 .detail-modal { position: relative; width: min(100%, 430px); padding: 30px; border: 1px solid #3569b4; border-radius: 18px; background: linear-gradient(145deg, #162f58, #0d1b35); box-shadow: 0 24px 70px #0008; }
@@ -1587,6 +1614,9 @@ button {
 .bar.purple > span {
   background: var(--purple);
 }
+.bar.danger > span {
+  background: #ef4444;
+}
 
 /* ==========================================================================
    Painel de insights
@@ -1996,6 +2026,17 @@ button {
 
 .pdf-transaction-list span { color: var(--muted); }
 .pdf-transaction-list em { color: #4ade80; font-style: normal; font-weight: 600; }
+.pdf-analysis-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+.pdf-analysis-grid span { display: flex; justify-content: space-between; gap: 12px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: #0d2142; color: var(--muted); font-size: 12px; }
+.pdf-analysis-grid b { color: var(--ink); white-space: nowrap; }
+@media (max-width: 560px) { .pdf-analysis-grid { grid-template-columns: 1fr; } }
+
+.financial-comparison { display: grid; gap: 18px; margin-top: 24px; }
+.financial-bar-row { display: grid; gap: 7px; }
+.financial-bar-row > div:first-child { display: flex; justify-content: space-between; gap: 16px; font-size: 13px; }
+.financial-bar-row b { font-variant-numeric: tabular-nums; }
+.financial-bar-track { height: 16px; overflow: hidden; border-radius: 999px; background: #172948; box-shadow: inset 0 0 0 1px #27436e; }
+.financial-bar-track span { display: block; height: 100%; min-width: 3px; border-radius: inherit; transition: width .25s ease; }
 
 .calendar-weekday {
   font-size: 10.5px;
@@ -2142,6 +2183,7 @@ button {
   gap: 26px;
   align-items: center;
   box-shadow: var(--shadow);
+  color: var(--ink);
 }
 
 .onboarding h2 {
@@ -2153,6 +2195,7 @@ button {
 .onboarding .subtitle {
   margin: 0;
   font-size: 13px;
+  color: var(--muted);
 }
 
 .onboarding-steps {
@@ -2170,6 +2213,7 @@ button {
   border-radius: 12px;
   padding: 13px 15px;
   font-size: 13px;
+  color: var(--ink);
   transition: border-color 0.15s, background 0.15s;
 }
 

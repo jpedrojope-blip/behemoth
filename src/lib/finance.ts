@@ -33,6 +33,9 @@ function parseDate(value: string) {
 export function filterByPeriod(transactions: Transaction[], period: Period, reference = new Date()) {
   const start = startOfPeriod(period, reference);
   const end = new Date(reference.getFullYear(), reference.getMonth(), reference.getDate(), 23, 59, 59);
+  if (period === "semana") end.setDate(end.getDate() + (6 - ((end.getDay() + 6) % 7)));
+  if (period === "mes") end.setMonth(end.getMonth() + 1, 0);
+  if (period === "trimestre") end.setMonth(end.getMonth() + 3, 0);
   return transactions.filter((transaction) => {
     const date = parseDate(transaction.date);
     return date >= start && date <= end;
@@ -51,6 +54,13 @@ export function previousPeriod(transactions: Transaction[], period: Period, refe
 
 export type Financials = {
   grossRevenue: number;
+  taxes: number;
+  cmv: number;
+  operationalExpenses: number;
+  netRevenue: number;
+  grossProfit: number;
+  grossMargin: number;
+  cashFlow: number;
   costs: number;
   netProfit: number;
   netMargin: number;
@@ -65,9 +75,23 @@ function sum(transactions: Transaction[]) {
 export function calculateFinancials(transactions: Transaction[]): Financials {
   const confirmed = transactions.filter((transaction) => transaction.status === "CONFIRMED");
   const grossRevenue = sum(confirmed.filter((transaction) => transaction.kind === "INCOME"));
-  const costs = sum(confirmed.filter((transaction) => transaction.kind === "EXPENSE"));
+  const expenses = confirmed.filter((transaction) => transaction.kind === "EXPENSE");
+  const categoryTotal = (pattern: RegExp) => sum(expenses.filter((transaction) => pattern.test(transaction.category.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase())));
+  const taxes = categoryTotal(/imposto|tribut|simples/);
+  const cmv = categoryTotal(/cmv|custo|fornecedor|embalag/);
+  const operationalExpenses = Math.max(0, sum(expenses) - taxes - cmv);
+  const costs = sum(expenses);
+  const netRevenue = grossRevenue - taxes;
+  const grossProfit = netRevenue - cmv;
   return {
     grossRevenue,
+    taxes,
+    cmv,
+    operationalExpenses,
+    netRevenue,
+    grossProfit,
+    grossMargin: grossRevenue ? grossProfit / grossRevenue : 0,
+    cashFlow: grossRevenue - costs,
     costs,
     netProfit: grossRevenue - costs,
     netMargin: grossRevenue ? (grossRevenue - costs) / grossRevenue : 0,

@@ -19,6 +19,7 @@ import {
   Zap,
 } from "lucide-react";
 import { BarChart } from "@/components/ui/bar-chart";
+import { LineChart } from "@/components/ui/line-chart";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, useResource } from "@/lib/client";
 import {
@@ -153,8 +154,8 @@ export default function DashboardPage() {
           meter={previousRevenue ? Math.min(100, (revenue / Math.max(revenue, previousRevenue)) * 100) : revenue ? 100 : 0}
           meterLabel={data ? `${signedPercent(data.comparison.revenue)} vs. anterior` : "—"}
           positive={(data?.comparison.revenue ?? 0) >= 0}
-          href="/financeiro"
-          onClick={() => setKpiDetail({ title: "Receita", body: `Total de entradas no período: ${brl(revenue)}. ${data ? `Variação de ${signedPercent(data.comparison.revenue)} em relação ao período anterior.` : ""}` })}
+          chartValues={(data?.series ?? []).map((point) => point.income)}
+          chartLabels={(data?.series ?? []).map((point) => point.label)}
         />
         <Kpi
           icon={<Wallet size={22} />}
@@ -165,8 +166,8 @@ export default function DashboardPage() {
           meter={revenue ? (costs / revenue) * 100 : 0}
           meterLabel={revenue ? `${percent((costs / revenue) * 100, 0)} da receita` : "sem receita no período"}
           barTone="amber"
-          href="/financeiro"
-          onClick={() => setKpiDetail({ title: "Custos", body: `Total de despesas no período: ${brl(costs)}. ${revenue ? `Isso representa ${percent((costs / revenue) * 100, 0)} da receita.` : "Ainda não há receita para comparar."}` })}
+          chartValues={(data?.series ?? []).map((point) => point.expense)}
+          chartLabels={(data?.series ?? []).map((point) => point.label)}
         />
         <Kpi
           icon={<Users size={22} />}
@@ -177,8 +178,8 @@ export default function DashboardPage() {
           meter={data?.team.total ? ((data.team.agents ?? 0) / data.team.total) * 100 : 0}
           meterLabel={`${brl(data?.team.monthlyCost ?? 0)} por mês`}
           barTone="purple"
-          href="/equipe"
-          onClick={() => setKpiDetail({ title: "Clientes ativos", body: `${data?.team.total ?? 0} integrantes cadastrados: ${data?.team.humans ?? 0} pessoas e ${data?.team.agents ?? 0} agentes de IA.` })}
+          chartValues={[data?.team.humans ?? 0, data?.team.agents ?? 0]}
+          chartLabels={["Pessoas", "IA"]}
         />
         <Kpi
           icon={<TrendingUp size={22} />}
@@ -188,13 +189,13 @@ export default function DashboardPage() {
           value={brl(financials?.netProfit ?? 0)}
           meter={(financials?.netMargin ?? 0) * 100}
           meterLabel={`${percent((financials?.netMargin ?? 0) * 100)} de margem`}
-          barTone="green"
-          href="/financeiro"
-          onClick={() => setKpiDetail({ title: "Lucro líquido", body: `Resultado após custos: ${brl(financials?.netProfit ?? 0)}, com margem de ${percent((financials?.netMargin ?? 0) * 100)}.` })}
+          barTone={(financials?.netProfit ?? 0) < 0 ? "danger" : "green"}
+          chartValues={(data?.series ?? []).map((point) => point.profit)}
+          chartLabels={(data?.series ?? []).map((point) => point.label)}
         />
       </section>
 
-      {kpiDetail && <div className="modal-backdrop" onClick={() => setKpiDetail(null)}><section className="detail-modal detail-modal-chart" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setKpiDetail(null)} aria-label="Fechar"><span>×</span></button><p className="card-kicker">VISÃO DETALHADA</p><h2>{kpiDetail.title}</h2><p>{kpiDetail.body}</p><div className="modal-chart"><BarChart labels={(data?.series ?? []).map((point) => point.label)} series={[{ label: "Receita", values: (data?.series ?? []).map((point) => point.income), color: "#3b82f6" }, { label: "Custos", values: (data?.series ?? []).map((point) => point.expense), color: "#f5a524" }, { label: "Lucro", values: (data?.series ?? []).map((point) => point.profit), color: "#22c55e" }]} height={180} highlightLast /></div><button className="btn btn-primary" onClick={() => setKpiDetail(null)}>Entendi</button></section></div>}
+      {kpiDetail && <div className="modal-backdrop" onClick={() => setKpiDetail(null)}><section className="detail-modal detail-modal-chart" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setKpiDetail(null)} aria-label="Fechar"><span>×</span></button><p className="card-kicker">VISÃO DETALHADA</p><h2>{kpiDetail.title}</h2><p>{kpiDetail.body}</p><div className="modal-chart"><BarChart labels={kpiDetail.title === "Clientes ativos" ? ["Pessoas", "Agentes IA"] : (data?.series ?? []).map((point) => point.label)} series={kpiDetail.title === "Receita" ? [{ label: "Receita", values: (data?.series ?? []).map((point) => point.income), color: "#3b82f6" }] : kpiDetail.title === "Custos" ? [{ label: "Custos", values: (data?.series ?? []).map((point) => point.expense), color: "#ef4444" }] : kpiDetail.title === "Clientes ativos" ? [{ label: "Time", values: [data?.team.humans ?? 0, data?.team.agents ?? 0], color: "#8b5cf6" }] : [{ label: "Lucro líquido", values: (data?.series ?? []).map((point) => point.profit), color: (financials?.netProfit ?? 0) >= 0 ? "#22c55e" : "#ef4444" }]} height={210} highlightLast /></div><button className="btn btn-primary" onClick={() => setKpiDetail(null)}>Entendi</button></section></div>}
 
       <section className="content-grid">
         <div className="card">
@@ -219,10 +220,13 @@ export default function DashboardPage() {
           {loading && !data ? (
             <p className="loading">Carregando dados...</p>
           ) : (
-            <BarChart
+            <LineChart
               labels={(data?.series ?? []).map((point) => point.label)}
-              series={[{ label: "Receita", values: (data?.series ?? []).map((point) => point.income), color: "#2563eb" }]}
-              highlightLast
+              series={[
+                { label: "Receita", values: (data?.series ?? []).map((point) => point.income), color: "#2563eb", fill: true },
+                { label: "Custos", values: (data?.series ?? []).map((point) => -point.expense), color: "#ef4444" },
+                { label: "Resultado", values: (data?.series ?? []).map((point) => point.profit), color: (financials?.netProfit ?? 0) >= 0 ? "#22c55e" : "#f97316" },
+              ]}
               height={240}
             />
           )}
@@ -400,8 +404,8 @@ function Kpi({
   meterLabel,
   barTone,
   positive = true,
-  href,
-  onClick,
+  chartValues,
+  chartLabels,
 }: {
   icon: React.ReactNode;
   tone: string;
@@ -412,11 +416,13 @@ function Kpi({
   meterLabel: string;
   barTone?: string;
   positive?: boolean;
-  href: string;
-  onClick?: () => void;
+  chartValues: number[];
+  chartLabels: string[];
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const chartColor = tone === "green" && !positive ? "#ef4444" : tone === "amber" ? "#f5a524" : tone === "purple" ? "#8b5cf6" : tone === "green" ? "#22c55e" : "#3b82f6";
   return (
-    <Link className="kpi-card" href={href} onClick={(event) => { if (onClick) { event.preventDefault(); onClick(); } }}>
+    <button type="button" className="kpi-card kpi-card-button" aria-expanded={expanded} aria-label={`${label}. Clique para abrir ou fechar o gráfico.`} onClick={() => setExpanded((value) => !value)}>
       <div className="kpi-head">
         <div className={`kpi-icon ${tone}`}>{icon}</div>
         <div>
@@ -431,10 +437,11 @@ function Kpi({
         </div>
         <span style={positive ? undefined : { color: "#ff8f7a" }}>{meterLabel}</span>
       </div>
+      {expanded && <div className="kpi-expanded-chart"><BarChart labels={chartLabels} series={[{ label, values: chartValues.map(Math.abs), color: chartColor }]} height={155} highlightLast /></div>}
       <div className="kpi-link">
         Ver detalhes <ChevronRight size={14} />
       </div>
-    </Link>
+    </button>
   );
 }
 
