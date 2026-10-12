@@ -372,8 +372,8 @@ button {
   align-items: center;
   gap: 18px;
   padding: 0 30px;
-  background: #0a172ecc;
-  backdrop-filter: blur(10px);
+  background: var(--sidebar-top);
+
   border-bottom: 1px solid var(--line-soft);
   position: sticky;
   top: 0;
@@ -1431,7 +1431,7 @@ button {
   align-items: start;
 }
 
-.split-even {
+.calendar-layout { grid-template-columns: minmax(0, 1.7fr) minmax(340px, 1fr); } .split-even {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 18px;
