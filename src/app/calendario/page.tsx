@@ -229,7 +229,7 @@ export default function CalendarioPage() {
         </form>
       )}
 
-      <section className="section split">
+      <section className="section split calendar-layout">
         <div className="card calendar-main-card">
           <div className="section-head">
             <h2>{cursor.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</h2>
