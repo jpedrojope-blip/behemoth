@@ -14,27 +14,32 @@ export default function LoginPage() {
     event.preventDefault();
     setLoading(true);
     setError("");
-    const response = await fetch(registering ? "/api/auth/signup" : "/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      setError(payload.error ?? "Não foi possível entrar.");
+    try {
+      const response = await fetch(registering ? "/api/auth/signup" : "/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        setError(payload.error ?? "Não foi possível entrar.");
+        return;
+      }
+      window.location.href = "/";
+    } catch {
+      setError("Não foi possível conectar ao servidor local. Verifique se ele está em execução e tente novamente.");
+    } finally {
       setLoading(false);
-      return;
     }
-    window.location.href = "/";
   }
 
   return (
     <main className="login-page">
       <div className="login-card">
         <img className="login-logo" src="/brand/behemoth-logo.png" alt="Behemoth" />
-        <p className="eyebrow">CENTRO DE CONTROLE</p>
-        <h1>Entre no seu workspace</h1>
-        <p className="subtitle">Acesse seus clientes, finanças, reuniões e automações.</p>
+        <p className="eyebrow">SISTEMA OPERACIONAL INTELIGENTE</p>
+        <h1>Clareza para decidir melhor.</h1>
+        <p className="subtitle">A Behemoth mostra o que está acontecendo na sua empresa, o que merece atenção e qual pode ser o próximo passo.</p>
         <form onSubmit={submit} className="login-form">
           <label htmlFor="email">E-mail</label>
           <input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="voce@empresa.com" required />
@@ -48,7 +53,12 @@ export default function LoginPage() {
         <button className="login-switch" onClick={() => { setRegistering(!registering); setError(""); }}>
           {registering ? "Já tenho uma conta" : "Ainda não tenho conta"}
         </button>
-        <p className="small muted login-note">Ambiente local de demonstração. Os dados ficam separados por workspace.</p>
+        <div className="login-promise" aria-label="Promessa da Behemoth">
+          <span><b>01</b>Números claros</span>
+          <span><b>02</b>Prioridades definidas</span>
+          <span><b>03</b>Decisões mais rápidas</span>
+        </div>
+        <p className="small muted login-note">Entre para acessar o workspace da sua empresa.</p>
       </div>
     </main>
   );

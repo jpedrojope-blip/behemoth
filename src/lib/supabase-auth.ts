@@ -1,8 +1,36 @@
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
+import { findUserBySessionToken, type LocalUser } from "@/lib/auth-store";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+export function usesLocalDemoAuth() {
+  return process.env.NODE_ENV !== "production"
+    && process.env.AUTH_PROVIDER === "local"
+    && process.env.ENABLE_LOCAL_DEMO_AUTH === "true";
+}
+
+export class SupabaseUnavailableError extends Error {
+  constructor() {
+    super("Não foi possível conectar ao Supabase. Confira se o projeto está ativo e se a URL e as chaves pertencem ao mesmo projeto.");
+    this.name = "SupabaseUnavailableError";
+  }
+}
+
+function throwIfSupabaseUnavailable(error: unknown) {
+  if (!error || typeof error !== "object") return;
+  const details = error as { name?: unknown; message?: unknown; status?: unknown };
+  const message = typeof details.message === "string" ? details.message.toLowerCase() : "";
+  if (
+    details.name === "AuthRetryableFetchError"
+    || details.status === 0
+    || message === "fetch failed"
+    || message.includes("invalid api key")
+  ) {
+    throw new SupabaseUnavailableError();
+  }
+}
 
 export function translateAuthError(message: string) {
   const normalized = message.toLowerCase();
@@ -15,18 +43,28 @@ export function translateAuthError(message: string) {
 }
 
 function getPublicClient(): SupabaseClient {
-  if (!url || !publishableKey) throw new Error("Supabase não configurado.");
+  if (!url || !publishableKey) throw new SupabaseUnavailableError();
   return createClient(url, publishableKey, { auth: { autoRefreshToken: false, persistSession: false } });
+}
+
+function getAdminClient() {
+  try {
+    return getSupabaseAdmin();
+  } catch {
+    throw new SupabaseUnavailableError();
+  }
 }
 
 export async function signIn(email: string, password: string) {
   const client = getPublicClient();
   const firstAttempt = await client.auth.signInWithPassword({ email, password });
   if (firstAttempt.data.session && firstAttempt.data.user) return firstAttempt.data;
+  if (firstAttempt.error) throwIfSupabaseUnavailable(firstAttempt.error);
 
   if (firstAttempt.error?.message.toLowerCase().includes("email not confirmed")) {
-    const admin = getSupabaseAdmin();
+    const admin = getAdminClient();
     const lookup = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (lookup.error) throwIfSupabaseUnavailable(lookup.error);
     const existingUser = lookup.data.users.find((user) => user.email?.toLowerCase() === email.toLowerCase());
     if (existingUser) {
       const confirmed = await admin.auth.admin.updateUserById(existingUser.id, { email_confirm: true });
@@ -41,8 +79,9 @@ export async function signIn(email: string, password: string) {
 }
 
 export async function signUp(email: string, password: string, name: string) {
-  const admin = getSupabaseAdmin();
+  const admin = getAdminClient();
   const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name } });
+  if (error) throwIfSupabaseUnavailable(error);
   if (error || !data.user) throw new Error(translateAuthError(error?.message ?? "Não foi possível criar a conta."));
   const { data: workspace, error: workspaceError } = await admin.from("workspaces").insert({ name: `Workspace de ${name}`, niche: "", plan: "Basic" }).select("id").single();
   if (workspaceError || !workspace) throw new Error("A conta foi criada, mas o workspace não pôde ser criado.");
@@ -63,7 +102,10 @@ export function parseSessionCookie(value: string) {
   } catch { return null; }
 }
 
-export async function getUserFromAccessToken(token: string): Promise<User | null> {
+export async function getUserFromAccessToken(token: string): Promise<User | LocalUser | null> {
+  if (token.startsWith("local.")) {
+    return usesLocalDemoAuth() ? findUserBySessionToken(token) : null;
+  }
   const { data } = await getPublicClient().auth.getUser(token);
   return data.user;
 }

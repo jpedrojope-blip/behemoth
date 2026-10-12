@@ -85,9 +85,9 @@ export default function DashboardPage() {
         <div>
           <p className="eyebrow">{today.toUpperCase()}</p>
           <h1>
-            {greeting()}, {data?.company.ownerName.split(" ")[0] ?? "..."} <span>✦</span>
+            {greeting()}, {data?.company.ownerName.split(" ")[0] ?? "..."}. <span>Clareza para decidir.</span>
           </h1>
-          <p className="subtitle">Aqui está o que está acontecendo na sua empresa.</p>
+          <p className="subtitle">Financeiro, pessoas, agenda e sinais do negócio em uma única visão.</p>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <div className="period-select">
@@ -109,14 +109,39 @@ export default function DashboardPage() {
 
       {error && <p className="form-error">{error}</p>}
 
+      <section className="command-banner" aria-labelledby="command-title">
+        <div>
+          <p className="card-kicker">BEHEMOTH · CENTRAL DE COMANDO</p>
+          <h2 id="command-title">O que precisa da sua atenção?</h2>
+          <p>Transforme dados soltos em clareza para escolher o próximo passo com mais velocidade e menos feeling.</p>
+          <Link className="command-link" href="/reunioes">
+            Ver próximas ações <ArrowUpRight size={15} />
+          </Link>
+        </div>
+        <div className="command-metrics" aria-label="Resumo da empresa">
+          <div className="command-metric">
+            <small>Time conectado</small>
+            <strong>{data ? data.team.total : "—"}</strong>
+          </div>
+          <div className="command-metric">
+            <small>Ações abertas</small>
+            <strong>{data ? data.openActionItems : "—"}</strong>
+          </div>
+          <div className="command-metric">
+            <small>Margem líquida</small>
+            <strong>{data ? percent((financials?.netMargin ?? 0) * 100, 0) : "—"}</strong>
+          </div>
+        </div>
+      </section>
+
       {isEmpty && (
         <section className="onboarding">
           <div>
-            <p className="card-kicker">PRIMEIROS PASSOS</p>
-            <h2>Seu workspace está zerado — cadastre os dados reais</h2>
+            <p className="card-kicker">CONSTRUA SUA VISÃO</p>
+            <h2>Comece a montar a central de comando da sua empresa</h2>
             <p className="subtitle">
-              Nenhum número aqui é estimado: cada indicador aparece assim que você registrar as informações da sua
-              empresa.
+              A Behemoth só transforma dados reais em decisões úteis. Conecte os primeiros sinais do negócio para
+              enxergar o que está acontecendo.
             </p>
           </div>
           <div className="onboarding-steps">
@@ -305,8 +330,8 @@ export default function DashboardPage() {
         <div className="card insight-card">
           <div className="card-head">
             <div>
-              <p className="card-kicker">BEHEMOTH INTELLIGENCE</p>
-              <h2>Insights para você</h2>
+              <p className="card-kicker">PRÓXIMA DECISÃO</p>
+              <h2>O que merece atenção</h2>
             </div>
             <div className="sparkle">
               <Sparkles size={18} />
@@ -320,12 +345,12 @@ export default function DashboardPage() {
               <strong>{insight?.title ?? "Sem dados no período"}</strong>
               <p>{insight?.text ?? "Cadastre lançamentos para gerar recomendações."}</p>
               <Link href="/financeiro">
-                Ver análise completa <ArrowUpRight size={14} />
+                Abrir análise <ArrowUpRight size={14} />
               </Link>
             </div>
           </div>
           <div className="insight-footer">
-            <span>● Calculado sobre {financials?.transactionCount ?? 0} lançamentos</span>
+            <span>● Baseado em {financials?.transactionCount ?? 0} lançamentos</span>
             <button onClick={() => setInsightIndex((index) => index + 1)} disabled={insights.length < 2}>
               {insights.length ? `${(insightIndex % insights.length) + 1} de ${insights.length}` : "0"}
             </button>

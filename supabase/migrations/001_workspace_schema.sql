@@ -89,3 +89,35 @@ create policy "members access clients" on public.clients for all using (public.i
 create policy "members access transactions" on public.transactions for all using (public.is_workspace_member(workspace_id)) with check (public.is_workspace_member(workspace_id));
 create policy "members access meetings" on public.meetings for all using (public.is_workspace_member(workspace_id)) with check (public.is_workspace_member(workspace_id));
 create policy "members access calendar" on public.calendar_events for all using (public.is_workspace_member(workspace_id)) with check (public.is_workspace_member(workspace_id));
+
+-- Recupera contas Auth criadas antes de as tabelas de workspace existirem.
+do $$
+declare
+  existing_user record;
+  new_workspace_id uuid;
+begin
+  for existing_user in
+    select
+      users.id,
+      coalesce(
+        nullif(users.raw_user_meta_data->>'name', ''),
+        nullif(split_part(coalesce(users.email, ''), '@', 1), ''),
+        'Minha empresa'
+      ) as display_name
+    from auth.users as users
+    where not exists (
+      select 1
+      from public.workspace_members as members
+      where members.user_id = users.id
+    )
+  loop
+    insert into public.workspaces (name, niche, plan)
+    values ('Workspace de ' || existing_user.display_name, '', 'Basic')
+    returning id into new_workspace_id;
+
+    insert into public.workspace_members (workspace_id, user_id, role)
+    values (new_workspace_id, existing_user.id, 'ADMIN');
+  end loop;
+end $$;
+
+notify pgrst, 'reload schema';

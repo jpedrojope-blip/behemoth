@@ -50,7 +50,7 @@ const PLANS = ["Basic", "Pro", "Enterprise"];
 type ShellData = { company: Company; openActionItems: number };
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "/";
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     if (typeof window === "undefined") return 264;
@@ -128,6 +128,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <ToastProvider>
       <div className="app-shell" style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}>
         <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
+          <Link href="/" className="sidebar-brand" onClick={close} aria-label="Behemoth — Início">
+            <img src="/brand/behemoth-logo.png" alt="Behemoth" />
+          </Link>
           <Link href="/configuracoes" className="sidebar-user" onClick={close}>
             <div className="avatar">{initials(company?.ownerName ?? "")}</div>
             <div>
@@ -215,9 +218,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {menuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
 
-            <Link href="/" className="brand">
-              <img className="brand-logo" src="/brand/behemoth-logo.png" alt="Behemoth" />
-            </Link>
+            <div className="brand-context">
+              <Link href="/" className="brand">
+                <img className="brand-logo" src="/brand/behemoth-logo.png" alt="Behemoth" />
+              </Link>
+              <span className="brand-tagline">CLAREZA PARA DECIDIR</span>
+            </div>
 
             <div className="plan-select">
               <select

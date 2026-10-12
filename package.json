@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "node scripts/next-with-project-node-path.cjs dev --webpack",
+    "build": "node scripts/next-with-project-node-path.cjs build --webpack",
+    "start": "node scripts/next-with-project-node-path.cjs start",
     "lint": "eslint",
     "smoke": "node scripts/smoke-automations.mjs"
   },

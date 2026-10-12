@@ -1,14 +1,38 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { loginSchema, parseBody } from "@/lib/schemas";
-import { signUp, signIn, sessionCookieValue } from "@/lib/supabase-auth";
+import { createLocalSessionToken, createUser } from "@/lib/auth-store";
+import { signUp, signIn, sessionCookieValue, SupabaseUnavailableError, usesLocalDemoAuth } from "@/lib/supabase-auth";
 
 export async function POST(request: Request) {
   const parsed = await parseBody(request, loginSchema);
   if (!parsed.ok) return parsed.response;
   const name = parsed.data.email.split("@")[0];
+
+  if (usesLocalDemoAuth()) {
+    const workspaceId = randomUUID();
+    const user = createUser(parsed.data.email, parsed.data.password, workspaceId, name);
+    if (!user) return NextResponse.json({ error: "Este e-mail já está cadastrado. Entre na conta existente." }, { status: 409 });
+    const response = NextResponse.json({ user: { id: user.id, email: user.email, workspaceId }, emailVerificationRequired: false }, { status: 201 });
+    response.cookies.set("behemoth_session", sessionCookieValue(createLocalSessionToken(user.id), "local"), {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 60 * 60 * 24 * 7,
+      path: "/",
+    });
+    return response;
+  }
+
   let created;
   try { created = await signUp(parsed.data.email, parsed.data.password, name); }
-  catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Não foi possível criar a conta." }, { status: 409 }); }
+  catch (error) {
+    const unavailable = error instanceof SupabaseUnavailableError;
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Não foi possível criar a conta." },
+      { status: unavailable ? 503 : 409 },
+    );
+  }
   let session;
   try { session = await signIn(parsed.data.email, parsed.data.password); } catch { session = null; }
   const response = NextResponse.json({ user: { id: created.user.id, email: created.user.email, workspaceId: created.workspaceId }, emailVerificationRequired: !session }, { status: 201 });

@@ -81,6 +81,10 @@ GET    /api/settings      PATCH /api/settings     POST /api/settings/reset
 POST   /api/auth/login                  sessão de demonstração
 ```
 
+Em `npm run dev`, login e cadastro usam o Supabase quando `AUTH_PROVIDER=supabase` e as três
+variáveis do Supabase estão configuradas. O modo local de demonstração só é ativado com
+`AUTH_PROVIDER=local` e `ENABLE_LOCAL_DEMO_AUTH=true`. Em produção, a autenticação usa o Supabase.
+
 `period` aceita `hoje`, `semana`, `mes` e `trimestre`.
 Todo corpo de requisição é validado com Zod (`src/lib/schemas.ts`) — a resposta de erro traz
 a mensagem em português e o campo que falhou.
