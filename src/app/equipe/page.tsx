@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState } from "react"; import Link from "next/link";
 import {
   Bot,
   ChevronRight,
@@ -138,7 +138,7 @@ export default function EquipePage() {
 
       {error && <p className="form-error">{error}</p>}
 
-      <section className="kpi-grid">
+      <section className="kpi-grid team-kpis">
         <SummaryCard
           icon={<Users size={22} />}
           tone="blue"
@@ -291,7 +291,7 @@ export default function EquipePage() {
         </form>
       )}
 
-      <section className="section split">
+      <section className="section split team-layout">
         <div>
           <div className="section-head">
             <div className="tabs">
@@ -318,14 +318,14 @@ export default function EquipePage() {
 
           <div className="member-grid">
             {team.map((member) => {
-              const verdict = judge(member);
+              const verdict = judge(member); const profileHref = `/equipe/${encodeURIComponent(member.id)}`;
               return (
                 <article className="member-card" key={member.id}>
                   <div className="member-top">
                     <div className={`member-avatar ${member.type === "AI" ? "ai" : ""}`}>
                       {member.type === "AI" ? <Bot size={20} /> : initials(member.name)}
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="member-info" style={{ flex: 1, minWidth: 0 }}>
                       <span className={`pill ${member.type === "AI" ? "purple" : "blue"}`}>
                         {member.type === "AI" ? "Agente IA" : "Humano"}
                       </span>
@@ -346,7 +346,7 @@ export default function EquipePage() {
                     />
                   </div>
 
-                  <div className="member-foot">
+                  <div className="member-foot"><Link className="member-open-link" href={profileHref}>Abrir perfil <ChevronRight size={15} /></Link>
                     <span className={`pill ${verdict.tone}`}>{verdict.text}</span>
                     <b>{brl(member.monthlyCost)}</b>
                     <b style={{ color: member.roi >= 100 ? "#4ade80" : "#f7b955" }}>{member.roi}%</b>
