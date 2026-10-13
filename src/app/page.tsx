@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowUpRight,
   BadgeDollarSign,
@@ -11,6 +11,7 @@ import {
   ChevronRight,
   FileText,
   Plus,
+  SlidersHorizontal,
   Sparkles,
   TrendingDown,
   TrendingUp,
@@ -53,12 +54,49 @@ const AGENDA_COLORS: Record<CalendarEvent["kind"], string> = {
   EVENT: "blue",
 };
 
+type DashboardWidgetId =
+  | "revenue" | "costs" | "team" | "profit" | "summary" | "trend" | "weekly"
+  | "transactions" | "insights" | "agenda" | "shortcuts";
+
+const DASHBOARD_WIDGETS: Array<{ id: DashboardWidgetId; label: string; group: "Indicadores" | "Seções" }> = [
+  { id: "revenue", label: "Receita", group: "Indicadores" },
+  { id: "costs", label: "Custos", group: "Indicadores" },
+  { id: "team", label: "Equipe", group: "Indicadores" },
+  { id: "profit", label: "Lucro líquido", group: "Indicadores" },
+  { id: "summary", label: "Resumo executivo", group: "Seções" },
+  { id: "trend", label: "Evolução financeira", group: "Seções" },
+  { id: "weekly", label: "Resumo semanal", group: "Seções" },
+  { id: "transactions", label: "Últimos lançamentos", group: "Seções" },
+  { id: "insights", label: "Pontos de atenção", group: "Seções" },
+  { id: "agenda", label: "Agenda", group: "Seções" },
+  { id: "shortcuts", label: "Ações rápidas", group: "Seções" },
+];
+
+const DEFAULT_DASHBOARD_WIDGETS = DASHBOARD_WIDGETS.map(({ id }) => id);
+
+function readDashboardWidgets(): Set<DashboardWidgetId> {
+  try {
+    const stored: unknown = JSON.parse(window.localStorage.getItem("behemoth-dashboard-widgets") ?? "null");
+    if (!Array.isArray(stored)) return new Set(DEFAULT_DASHBOARD_WIDGETS);
+    return new Set(stored.filter((value): value is DashboardWidgetId =>
+      DASHBOARD_WIDGETS.some((widget) => widget.id === value),
+    ));
+  } catch {
+    return new Set(DEFAULT_DASHBOARD_WIDGETS);
+  }
+}
+
 export default function DashboardPage() {
   const [period, setPeriod] = useState<Period>("mes");
+  const [visibleWidgets, setVisibleWidgets] = useState<Set<DashboardWidgetId>>(() => new Set(DEFAULT_DASHBOARD_WIDGETS));
   const [insightIndex, setInsightIndex] = useState(0);
   const [kpiDetail, setKpiDetail] = useState<{ title: string; body: string } | null>(null);
   const { data, loading, error } = useResource<Overview>(`/api/overview?period=${period}`);
   const notify = useToast();
+
+  useEffect(() => {
+    setVisibleWidgets(readDashboardWidgets());
+  }, []);
 
   const today = useMemo(() => longDate(new Date()), []);
   const insights = data?.insights ?? [];
@@ -69,6 +107,18 @@ export default function DashboardPage() {
   const revenue = financials?.grossRevenue ?? 0;
   const costs = financials?.costs ?? 0;
   const previousRevenue = data?.comparison.previous.grossRevenue ?? 0;
+
+  function toggleWidget(id: DashboardWidgetId) {
+    const next = new Set(visibleWidgets);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setVisibleWidgets(next);
+    try {
+      window.localStorage.setItem("behemoth-dashboard-widgets", JSON.stringify([...next]));
+    } catch {
+      // A visão segue utilizável se o navegador bloquear o armazenamento local.
+    }
+  }
 
   async function toggleEvent(event: CalendarEvent) {
     try {
@@ -89,7 +139,7 @@ export default function DashboardPage() {
           </h1>
           <p className="subtitle">Financeiro, pessoas, agenda e sinais do negócio em uma única visão.</p>
         </div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div className="dashboard-head-actions">
           <div className="period-select">
             <CalendarDays size={16} />
             <select value={period} onChange={(event) => setPeriod(event.target.value as Period)}>
@@ -101,6 +151,23 @@ export default function DashboardPage() {
             </select>
             <ChevronDown size={15} />
           </div>
+          <details className="view-options">
+            <summary className="btn btn-ghost"><SlidersHorizontal size={15} /> Personalizar visão</summary>
+            <div className="view-options-panel">
+              <strong>O que você quer acompanhar?</strong>
+              {(["Indicadores", "Seções"] as const).map((group) => (
+                <fieldset key={group}>
+                  <legend>{group}</legend>
+                  {DASHBOARD_WIDGETS.filter((widget) => widget.group === group).map((widget) => (
+                    <label key={widget.id}>
+                      <input type="checkbox" checked={visibleWidgets.has(widget.id)} onChange={() => toggleWidget(widget.id)} />
+                      {widget.label}
+                    </label>
+                  ))}
+                </fieldset>
+              ))}
+            </div>
+          </details>
           <Link className="btn btn-primary" href="/financeiro?novo=1">
             <Plus size={16} /> Novo Lançamento
           </Link>
@@ -108,31 +175,6 @@ export default function DashboardPage() {
       </section>
 
       {error && <p className="form-error">{error}</p>}
-
-      <section className="command-banner" aria-labelledby="command-title">
-        <div>
-          <p className="card-kicker">BEHEMOTH · CENTRAL DE COMANDO</p>
-          <h2 id="command-title">O que precisa da sua atenção?</h2>
-          <p>Transforme dados soltos em clareza para escolher o próximo passo com mais velocidade e menos feeling.</p>
-          <Link className="command-link" href="/reunioes">
-            Ver próximas ações <ArrowUpRight size={15} />
-          </Link>
-        </div>
-        <div className="command-metrics" aria-label="Resumo da empresa">
-          <div className="command-metric">
-            <small>Time conectado</small>
-            <strong>{data ? data.team.total : "—"}</strong>
-          </div>
-          <div className="command-metric">
-            <small>Ações abertas</small>
-            <strong>{data ? data.openActionItems : "—"}</strong>
-          </div>
-          <div className="command-metric">
-            <small>Margem líquida</small>
-            <strong>{data ? percent((financials?.netMargin ?? 0) * 100, 0) : "—"}</strong>
-          </div>
-        </div>
-      </section>
 
       {isEmpty && (
         <section className="onboarding">
@@ -169,8 +211,8 @@ export default function DashboardPage() {
         </section>
       )}
 
-      <section className="kpi-grid">
-        <Kpi
+      <section className="kpi-grid dashboard-kpi-grid" aria-label="Indicadores do negócio" hidden={!(["revenue", "costs", "team", "profit"] as DashboardWidgetId[]).some((id) => visibleWidgets.has(id))}>
+        {visibleWidgets.has("revenue") && <Kpi
           icon={<BadgeDollarSign size={24} />}
           tone="blue"
           label="Receita"
@@ -181,8 +223,8 @@ export default function DashboardPage() {
           positive={(data?.comparison.revenue ?? 0) >= 0}
           chartValues={(data?.series ?? []).map((point) => point.income)}
           chartLabels={(data?.series ?? []).map((point) => point.label)}
-        />
-        <Kpi
+        />}
+        {visibleWidgets.has("costs") && <Kpi
           icon={<Wallet size={22} />}
           tone="amber"
           label="Custos"
@@ -193,20 +235,20 @@ export default function DashboardPage() {
           barTone="amber"
           chartValues={(data?.series ?? []).map((point) => point.expense)}
           chartLabels={(data?.series ?? []).map((point) => point.label)}
-        />
-        <Kpi
+        />}
+        {visibleWidgets.has("team") && <Kpi
           icon={<Users size={22} />}
           tone="purple"
-          label="Clientes ativos"
-          sub={`${data?.team.humans ?? 0} humanos · ${data?.team.agents ?? 0} agentes IA`}
+          label="Equipe"
+          sub={`${data?.team.humans ?? 0} pessoas · ${data?.team.agents ?? 0} agentes IA`}
           value={String(data?.team.total ?? 0)}
           meter={data?.team.total ? ((data.team.agents ?? 0) / data.team.total) * 100 : 0}
           meterLabel={`${brl(data?.team.monthlyCost ?? 0)} por mês`}
           barTone="purple"
           chartValues={[data?.team.humans ?? 0, data?.team.agents ?? 0]}
           chartLabels={["Pessoas", "IA"]}
-        />
-        <Kpi
+        />}
+        {visibleWidgets.has("profit") && <Kpi
           icon={<TrendingUp size={22} />}
           tone="green"
           label="Lucro Líquido"
@@ -217,13 +259,27 @@ export default function DashboardPage() {
           barTone={(financials?.netProfit ?? 0) < 0 ? "danger" : "green"}
           chartValues={(data?.series ?? []).map((point) => point.profit)}
           chartLabels={(data?.series ?? []).map((point) => point.label)}
-        />
+        />}
       </section>
 
-      {kpiDetail && <div className="modal-backdrop" onClick={() => setKpiDetail(null)}><section className="detail-modal detail-modal-chart" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setKpiDetail(null)} aria-label="Fechar"><span>×</span></button><p className="card-kicker">VISÃO DETALHADA</p><h2>{kpiDetail.title}</h2><p>{kpiDetail.body}</p><div className="modal-chart"><BarChart labels={kpiDetail.title === "Clientes ativos" ? ["Pessoas", "Agentes IA"] : (data?.series ?? []).map((point) => point.label)} series={kpiDetail.title === "Receita" ? [{ label: "Receita", values: (data?.series ?? []).map((point) => point.income), color: "#3b82f6" }] : kpiDetail.title === "Custos" ? [{ label: "Custos", values: (data?.series ?? []).map((point) => point.expense), color: "#ef4444" }] : kpiDetail.title === "Clientes ativos" ? [{ label: "Time", values: [data?.team.humans ?? 0, data?.team.agents ?? 0], color: "#8b5cf6" }] : [{ label: "Lucro líquido", values: (data?.series ?? []).map((point) => point.profit), color: (financials?.netProfit ?? 0) >= 0 ? "#22c55e" : "#ef4444" }]} height={210} highlightLast /></div><button className="btn btn-primary" onClick={() => setKpiDetail(null)}>Entendi</button></section></div>}
+      {visibleWidgets.has("summary") && <section className="dashboard-focus" aria-label="Resumo executivo">
+        <div>
+          <p className="card-kicker">RESUMO DO PERÍODO</p>
+          <strong>O que precisa da sua atenção?</strong>
+          <span>Indicadores financeiros, equipe e compromissos em uma única visão.</span>
+        </div>
+        <div className="dashboard-focus-metrics">
+          <div><small>Ações abertas</small><strong>{data ? data.openActionItems : "—"}</strong></div>
+          <div><small>Membros da equipe</small><strong>{data ? data.team.total : "—"}</strong></div>
+          <div><small>Margem líquida</small><strong>{data ? percent((financials?.netMargin ?? 0) * 100, 0) : "—"}</strong></div>
+        </div>
+        <Link className="link-btn" href="/reunioes">Ver próximas ações <ArrowUpRight size={14} /></Link>
+      </section>}
 
-      <section className="content-grid">
-        <div className="card">
+      {kpiDetail && <div className="modal-backdrop" onClick={() => setKpiDetail(null)}><section className="detail-modal detail-modal-chart" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}><button className="modal-close" onClick={() => setKpiDetail(null)} aria-label="Fechar"><span>×</span></button><p className="card-kicker">VISÃO DETALHADA</p><h2>{kpiDetail.title}</h2><p>{kpiDetail.body}</p><div className="modal-chart"><BarChart labels={kpiDetail.title === "Equipe" ? ["Pessoas", "Agentes IA"] : (data?.series ?? []).map((point) => point.label)} series={kpiDetail.title === "Receita" ? [{ label: "Receita", values: (data?.series ?? []).map((point) => point.income), color: "#3b82f6" }] : kpiDetail.title === "Custos" ? [{ label: "Custos", values: (data?.series ?? []).map((point) => point.expense), color: "#ef4444" }] : kpiDetail.title === "Equipe" ? [{ label: "Equipe", values: [data?.team.humans ?? 0, data?.team.agents ?? 0], color: "#8b5cf6" }] : [{ label: "Lucro líquido", values: (data?.series ?? []).map((point) => point.profit), color: (financials?.netProfit ?? 0) >= 0 ? "#22c55e" : "#ef4444" }]} height={210} highlightLast /></div><button className="btn btn-primary" onClick={() => setKpiDetail(null)}>Entendi</button></section></div>}
+
+      <section className="content-grid" hidden={!visibleWidgets.has("trend") && !visibleWidgets.has("weekly")}>
+        <div className="card" hidden={!visibleWidgets.has("trend")}>
           <div className="card-head">
             <div>
               <h2>Desempenho Financeiro</h2>
@@ -257,7 +313,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="card">
+        <div className="card" hidden={!visibleWidgets.has("weekly")}>
           <div className="card-head">
             <div>
               <h2>Relatório Semanal</h2>
@@ -281,8 +337,8 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="bottom-grid">
-        <div className="card">
+      <section className="bottom-grid" hidden={!visibleWidgets.has("transactions") && !visibleWidgets.has("insights")}>
+        <div className="card" hidden={!visibleWidgets.has("transactions")}>
           <div className="card-head">
             <h2>Últimos Lançamentos</h2>
             <Link className="link-btn" href="/financeiro">
@@ -327,7 +383,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="card insight-card">
+        <div className="card insight-card" hidden={!visibleWidgets.has("insights")}>
           <div className="card-head">
             <div>
               <p className="card-kicker">PRÓXIMA DECISÃO</p>
@@ -358,8 +414,8 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="bottom-grid">
-        <div className="card">
+      <section className="bottom-grid" hidden={!visibleWidgets.has("agenda") && !visibleWidgets.has("shortcuts")}>
+        <div className="card" hidden={!visibleWidgets.has("agenda")}>
           <div className="card-head">
             <div>
               <p className="card-kicker">AGENDA DE HOJE</p>
@@ -393,7 +449,7 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        <div className="card">
+        <div className="card" hidden={!visibleWidgets.has("shortcuts")}>
           <div className="card-head">
             <div>
               <p className="card-kicker">ATALHOS</p>

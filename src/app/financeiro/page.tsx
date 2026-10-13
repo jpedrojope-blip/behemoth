@@ -12,6 +12,7 @@ import {
   Plus,
   Receipt,
   Repeat,
+  SlidersHorizontal,
   TrendingUp,
   Trash2,
   X,
@@ -48,6 +49,30 @@ type Payload = {
 };
 
 type PdfAnalysis = { summary: { grossRevenue: number; taxes: number; netRevenue: number; cmv: number; grossProfit: number; operatingExpenses: number; financialIncome: number; financialExpense: number; nonOperatingIncome: number; nonOperatingExpense: number; investments: number; financingIn: number; financingOut: number; netProfit: number; grossMargin: number | null; netMargin: number | null; operationalCashFlow: number; freeCashFlow: number; projectedFixedOutflow: number }; warnings: string[] };
+
+type FinanceSectionId = "summary" | "charts" | "dre" | "cashflow" | "transactions";
+
+const FINANCE_SECTIONS: Array<{ id: FinanceSectionId; label: string }> = [
+  { id: "summary", label: "Indicadores principais" },
+  { id: "charts", label: "Gráficos do período" },
+  { id: "dre", label: "DRE e indicadores" },
+  { id: "cashflow", label: "Fluxo de caixa e metas" },
+  { id: "transactions", label: "Lançamentos" },
+];
+
+const DEFAULT_FINANCE_SECTIONS = FINANCE_SECTIONS.map(({ id }) => id);
+
+function readFinanceSections(): Set<FinanceSectionId> {
+  try {
+    const stored: unknown = JSON.parse(window.localStorage.getItem("behemoth-finance-sections") ?? "null");
+    if (!Array.isArray(stored)) return new Set(DEFAULT_FINANCE_SECTIONS);
+    return new Set(stored.filter((value): value is FinanceSectionId =>
+      FINANCE_SECTIONS.some((section) => section.id === value),
+    ));
+  } catch {
+    return new Set(DEFAULT_FINANCE_SECTIONS);
+  }
+}
 
 function summaryTransactions(analysis: PdfAnalysis) {
   const now = new Date();
@@ -94,6 +119,7 @@ function signedBrl(value: number) {
 
 export default function FinanceiroPage() {
   const [period, setPeriod] = useState<Period>("mes");
+  const [visibleSections, setVisibleSections] = useState<Set<FinanceSectionId>>(() => new Set(DEFAULT_FINANCE_SECTIONS));
   const [kind, setKind] = useState("todos");
   const [category, setCategory] = useState("todas");
   const [formOpen, setFormOpen] = useState(false);
@@ -107,6 +133,22 @@ export default function FinanceiroPage() {
   const [pdfTransactions, setPdfTransactions] = useState<Array<Pick<Transaction, "date" | "description" | "amount" | "kind" | "category">>>([]);
   const [pdfAnalysis, setPdfAnalysis] = useState<PdfAnalysis | null>(null);
   const notify = useToast();
+
+  useEffect(() => {
+    setVisibleSections(readFinanceSections());
+  }, []);
+
+  function toggleFinanceSection(id: FinanceSectionId) {
+    const next = new Set(visibleSections);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setVisibleSections(next);
+    try {
+      window.localStorage.setItem("behemoth-finance-sections", JSON.stringify([...next]));
+    } catch {
+      // A visão continua utilizável quando o navegador bloqueia o armazenamento local.
+    }
+  }
 
   const { data, loading, error } = useResource<Payload>(
     `/api/transactions?period=${period}&kind=${kind}&category=${encodeURIComponent(category)}`,
@@ -231,6 +273,21 @@ export default function FinanceiroPage() {
             </select>
             <ChevronDown size={15} />
           </div>
+          {activeTab === "report" && <details className="view-options">
+            <summary className="btn btn-ghost"><SlidersHorizontal size={15} /> Personalizar visão</summary>
+            <div className="view-options-panel">
+              <strong>Seções do relatório</strong>
+              <fieldset>
+                <legend>Exibir</legend>
+                {FINANCE_SECTIONS.map((section) => (
+                  <label key={section.id}>
+                    <input type="checkbox" checked={visibleSections.has(section.id)} onChange={() => toggleFinanceSection(section.id)} />
+                    {section.label}
+                  </label>
+                ))}
+              </fieldset>
+            </div>
+          </details>}
           <button className="btn btn-primary" onClick={() => setFormOpen((open) => !open)}>
             {formOpen ? <X size={16} /> : <Plus size={16} />} {formOpen ? "Cancelar" : "Novo lançamento"}
           </button>
@@ -313,7 +370,7 @@ export default function FinanceiroPage() {
       )}
 
       {activeTab === "report" && <>
-      <section className="kpi-grid">
+      <section className="kpi-grid finance-summary-grid" hidden={!visibleSections.has("summary")}>
         <FinanceCard
           icon={<BadgeDollarSign size={22} />}
           tone="blue"
@@ -350,7 +407,7 @@ export default function FinanceiroPage() {
       </>}
 
       {activeTab === "report" && <>
-      <section className="section split">
+      <section className="section split" hidden={!visibleSections.has("charts")}>
         <div className="card">
           <div className="card-head">
             <div>
@@ -401,7 +458,7 @@ export default function FinanceiroPage() {
       </section>
       </>}
 
-      <section className="section split">
+      <section className="section split" hidden={!visibleSections.has("dre")}>
         <div className="card">
           <div className="card-head">
             <div>
@@ -514,7 +571,7 @@ export default function FinanceiroPage() {
         </div>
       </section>
 
-      <section className="section split">
+      <section className="section split" hidden={!visibleSections.has("cashflow")}>
         <div className="card">
           <div className="card-head">
             <div>
@@ -554,7 +611,7 @@ export default function FinanceiroPage() {
         </div>
       </section>
 
-      <section className="section card">
+      <section className="section card" hidden={!visibleSections.has("transactions")}>
         <div className="section-head">
           <h2>Lançamentos</h2>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
