@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react"; import Link from "next/link";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Bot,
   ChevronRight,
@@ -318,7 +319,8 @@ export default function EquipePage() {
 
           <div className="member-grid">
             {team.map((member) => {
-              const verdict = judge(member); const profileHref = `/equipe/${encodeURIComponent(member.id)}`;
+              const verdict = judge(member);
+              const profileHref = `/equipe/${encodeURIComponent(member.id)}`;
               return (
                 <article className="member-card" key={member.id}>
                   <div className="member-top">
@@ -329,7 +331,7 @@ export default function EquipePage() {
                       <span className={`pill ${member.type === "AI" ? "purple" : "blue"}`}>
                         {member.type === "AI" ? "Agente IA" : "Humano"}
                       </span>
-                      <strong style={{ marginTop: 7 }}>{member.name}</strong>
+                      <strong>{member.name}</strong>
                       <span>{member.role}</span>
                     </div>
                     <button className="icon-action danger" onClick={() => remove(member)} title="Remover">
@@ -346,7 +348,10 @@ export default function EquipePage() {
                     />
                   </div>
 
-                  <div className="member-foot"><Link className="member-open-link" href={profileHref}>Abrir perfil <ChevronRight size={15} /></Link>
+                  <div className="member-foot">
+                    <Link className="member-open-link" href={profileHref}>
+                      Abrir perfil <ChevronRight size={15} />
+                    </Link>
                     <span className={`pill ${verdict.tone}`}>{verdict.text}</span>
                     <b>{brl(member.monthlyCost)}</b>
                     <b style={{ color: member.roi >= 100 ? "#4ade80" : "#f7b955" }}>{member.roi}%</b>

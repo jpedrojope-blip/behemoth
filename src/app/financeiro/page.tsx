@@ -84,6 +84,8 @@ export default function FinanceiroPage() {
   const [activeTab, setActiveTab] = useState<"report" | "pdf">("report");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [processingPdf, setProcessingPdf] = useState(false);
+  const [savingImport, setSavingImport] = useState(false);
+  const [pdfImportDone, setPdfImportDone] = useState(false);
   const [pdfTransactions, setPdfTransactions] = useState<Array<Pick<Transaction, "date" | "description" | "amount" | "kind" | "category">>>([]);
   const [pdfAnalysis, setPdfAnalysis] = useState<PdfAnalysis | null>(null);
   const notify = useToast();
@@ -111,30 +113,53 @@ export default function FinanceiroPage() {
     }
   }
 
-  async function processPdf() {
+  async function processFinancialFile() {
     if (!pdfFile) return;
     setProcessingPdf(true);
+    setPdfImportDone(false);
+    setPdfTransactions([]);
+    setPdfAnalysis(null);
     try {
       const body = new FormData();
       body.append("file", pdfFile);
       const response = await fetch("/api/finance/pdf", { method: "POST", body });
-      const payload = (await response.json()) as { error?: string; text?: string; transactions?: typeof pdfTransactions; analysis?: PdfAnalysis };
-      if (!response.ok) throw new Error(payload.error ?? "Não foi possível processar o PDF.");
+      const payload = (await response.json()) as { error?: string; transactions?: typeof pdfTransactions; analysis?: PdfAnalysis };
+      if (!response.ok) throw new Error(payload.error ?? "Não foi possível ler este arquivo.");
       const extracted = payload.transactions ?? [];
       const imported = extracted.length ? extracted : payload.analysis ? summaryTransactions(payload.analysis) : [];
-      for (const item of imported) {
-        await apiFetch("/api/transactions", {
-          method: "POST",
-          body: JSON.stringify({ ...item, status: "CONFIRMED", source: "PDF" }),
-        });
-      }
       setPdfTransactions(imported);
       setPdfAnalysis(payload.analysis ?? null);
-      notify(imported.length ? `${imported.length} informação(ões) do arquivo foram adicionadas ao painel.` : "Arquivo lido, mas não havia valores para importar.", imported.length ? "success" : "error");
+      notify(imported.length ? `${imported.length} lançamento(s) encontrados. Confira a prévia e confirme a importação.` : "Arquivo lido, mas não encontramos lançamentos financeiros.", imported.length ? "success" : "error");
     } catch (cause) {
-      notify(cause instanceof Error ? cause.message : "Erro ao processar PDF.", "error");
+      notify(cause instanceof Error ? cause.message : "Erro ao ler o arquivo.", "error");
     } finally {
       setProcessingPdf(false);
+    }
+  }
+
+  async function confirmImport() {
+    if (!pdfTransactions.length || pdfImportDone) return;
+    setSavingImport(true);
+    let saved = 0;
+    const extension = pdfFile?.name.toLowerCase().split(".").pop();
+    const source = extension === "xlsx" || extension === "xls" ? "Excel" : extension === "docx" ? "Word" : "PDF";
+    try {
+      for (const item of pdfTransactions) {
+        await apiFetch("/api/transactions", {
+          method: "POST",
+          body: JSON.stringify({ ...item, status: "CONFIRMED", source }),
+        });
+        saved += 1;
+      }
+      setPdfImportDone(true);
+      notify(`${saved} lançamento(s) adicionados ao relatório financeiro.`, "success");
+    } catch (cause) {
+      if (saved > 0) setPdfTransactions((pending) => pending.slice(saved));
+      notify(saved > 0
+        ? `${saved} lançamento(s) foram salvos. Ainda restam ${pdfTransactions.length - saved} para importar; você pode continuar sem duplicar os já salvos.`
+        : cause instanceof Error ? cause.message : "Não foi possível salvar os lançamentos.", "error");
+    } finally {
+      setSavingImport(false);
     }
   }
 
@@ -166,7 +191,7 @@ export default function FinanceiroPage() {
   const costIndex = revenue ? (costs / revenue) * 100 : 0;
 
   return (
-    <div className="page-wrap">
+    <div className="page-wrap financial-page">
       <div className="page-head">
         <div>
           <h1 className="page-title">Relatório Financeiro</h1>
@@ -197,7 +222,7 @@ export default function FinanceiroPage() {
           Visão geral
         </button>
         <button className={`tab ${activeTab === "pdf" ? "active" : ""}`} onClick={() => setActiveTab("pdf")} role="tab" aria-selected={activeTab === "pdf"}>
-          <FileText size={15} /> Importar PDF
+          <FileText size={15} /> Importar arquivo
         </button>
       </div>
 
@@ -206,32 +231,46 @@ export default function FinanceiroPage() {
           <div className="card-head">
             <div>
               <p className="card-kicker">IMPORTAÇÃO DE DADOS</p>
-              <h2>Adicione um relatório em PDF</h2>
-              <p className="small muted">Envie um extrato ou relatório financeiro para usar as informações no seu painel.</p>
+              <h2>Importe dados financeiros</h2>
+              <p className="small muted">Leia lançamentos de PDF, planilhas do Excel e documentos do Word (.docx).</p>
             </div>
           </div>
           <label className="pdf-dropzone" htmlFor="financial-pdf">
             <Upload size={25} />
-            <strong>{pdfFile ? pdfFile.name : "Selecione ou arraste seu PDF aqui"}</strong>
-            <span>{pdfFile ? `${(pdfFile.size / 1024 / 1024).toFixed(2)} MB · pronto para importar` : "PDF ou Excel · máximo recomendado de 10 MB"}</span>
-            <input id="financial-pdf" type="file" accept="application/pdf,.pdf,.xlsx,.xls" onChange={(event) => setPdfFile(event.target.files?.[0] ?? null)} />
+            <strong>{pdfFile ? pdfFile.name : "Selecione ou arraste PDF, Excel ou Word aqui"}</strong>
+            <span>{pdfFile ? `${(pdfFile.size / 1024 / 1024).toFixed(2)} MB · pronto para ler` : "PDF · Excel (.xlsx/.xls) · Word (.docx) · máximo 10 MB"}</span>
+            <input id="financial-pdf" type="file" accept="application/pdf,.pdf,.xlsx,.xls,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => {
+              setPdfFile(event.target.files?.[0] ?? null);
+              setPdfTransactions([]);
+              setPdfAnalysis(null);
+              setPdfImportDone(false);
+            }} />
           </label>
           <div className="pdf-import-actions">
-            <button className="btn btn-primary" disabled={!pdfFile || processingPdf} onClick={processPdf}>
-              {processingPdf ? "Lendo PDF..." : "Adicionar informações"}
+            <button className="btn btn-primary" disabled={!pdfFile || processingPdf || savingImport || pdfImportDone} onClick={processFinancialFile}>
+              {processingPdf ? "Lendo arquivo..." : "Ler arquivo"}
             </button>
-            {pdfFile && <button className="btn btn-ghost" onClick={() => setPdfFile(null)}>Remover arquivo</button>}
+            {pdfTransactions.length > 0 && !pdfImportDone && <button className="btn btn-primary" disabled={savingImport} onClick={confirmImport}>
+              {savingImport ? "Importando..." : `Confirmar ${pdfTransactions.length} lançamento(s)`}
+            </button>}
+            {pdfFile && <button className="btn btn-ghost" onClick={() => {
+              setPdfFile(null);
+              setPdfTransactions([]);
+              setPdfAnalysis(null);
+              setPdfImportDone(false);
+            }}>Remover arquivo</button>}
           </div>
+          {pdfImportDone && <div className="pdf-result"><strong>Importação concluída.</strong><p className="small muted">Os lançamentos já aparecem no relatório financeiro.</p></div>}
           {pdfTransactions.length > 0 && (
             <div className="pdf-result">
-              <strong>{pdfTransactions.length} lançamento(s) identificado(s)</strong>
+              <strong>{pdfImportDone ? "Lançamentos importados" : `${pdfTransactions.length} lançamento(s) encontrados · revise antes de importar`}</strong>
               <div className="pdf-transaction-list">
                 {pdfTransactions.slice(0, 8).map((item, index) => (
                   <div key={`${item.date}-${index}`}><span>{item.date}</span><b>{item.description}</b><em>{item.kind === "INCOME" ? "+" : "−"} {brl(item.amount)}</em></div>
                 ))}
               </div>
               {pdfTransactions.length > 8 && <p className="small muted">+ {pdfTransactions.length - 8} lançamento(s) adicionais</p>}
-              <p className="small muted">Essas informações já foram adicionadas ao painel e aos gráficos deste período.</p>
+              <p className="small muted">{pdfImportDone ? "Essas informações já aparecem no painel e nos gráficos." : "Confira os lançamentos antes de confirmar a importação."}</p>
             </div>
           )}
           {pdfAnalysis && (
@@ -247,7 +286,7 @@ export default function FinanceiroPage() {
               {pdfAnalysis.warnings.map((warning) => <p className="small muted" key={warning}>{warning}</p>)}
             </div>
           )}
-          {pdfAnalysis && !pdfTransactions.length && <div className="pdf-result"><strong>Não encontramos valores financeiros importáveis neste arquivo.</strong><p className="small muted">Tente enviar um PDF com valores ou uma planilha com os números preenchidos.</p></div>}
+          {pdfAnalysis && !pdfTransactions.length && <div className="pdf-result"><strong>Não encontramos lançamentos financeiros neste arquivo.</strong><p className="small muted">Confira se ele contém datas e valores em texto. PDFs digitalizados precisam passar por OCR antes do envio.</p></div>}
         </section>
       )}
 
