@@ -2524,3 +2524,72 @@ button {
     display: none;
   }
 }
+
+
+/* Visão compacta da equipe e perfis individuais. */
+.team-kpis .kpi-card { min-height: 142px; padding: 18px 20px; justify-content: space-between; }
+.team-kpis .kpi-head { align-items: center; gap: 12px; }
+.team-kpis .kpi-icon { width: 42px; height: 42px; }
+.team-kpis .kpi-label { font-size: 14px; }
+.team-kpis .kpi-value { font-size: 25px; margin-top: 4px; }
+.team-kpis .kpi-meter { margin-top: 12px; }
+.team-kpis .kpi-meter span { white-space: normal; line-height: 1.4; }
+
+.team-layout { grid-template-columns: minmax(0, 1fr); }
+.team-layout > div:first-child { order: 2; }
+.team-layout > div:last-child { order: 1; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.team-layout > div:last-child > .card { padding: 20px 22px; }
+.team-layout > div:last-child > .card:last-child { grid-column: 1 / -1; }
+.team-layout > div:first-child .member-grid { grid-template-columns: repeat(auto-fill, minmax(255px, 1fr)); }
+
+.member-info { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
+.member-top .member-info .pill { display: inline-flex; width: auto; max-width: 100%; }
+.member-open-link { display: inline-flex; align-items: center; gap: 3px; color: #8fb4ff; font-size: 12px; font-weight: 600; text-decoration: none; }
+.member-open-link:hover { color: #c3d7ff; }
+.member-open-link:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 3px; }
+
+.team-profile-page { max-width: 1250px; }
+.team-profile-back { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 22px; color: var(--muted); font-size: 13px; text-decoration: none; }
+.team-profile-back:hover { color: var(--ink); }
+.team-profile-back:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 3px; }
+.team-profile-heading { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; }
+.team-profile-avatar { width: 58px; height: 58px; font-size: 16px; }
+.team-profile-title { min-width: 0; }
+.team-profile-title .card-kicker { margin-bottom: 5px; }
+.team-profile-title .subtitle { margin-top: 4px; }
+.team-profile-heading-actions { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.team-profile-metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
+.team-profile-metric { display: grid; gap: 8px; padding: 18px 20px; }
+.team-profile-metric span { color: var(--muted); font-size: 12px; }
+.team-profile-metric strong { color: var(--ink); font: 700 22px var(--font-display), sans-serif; font-variant-numeric: tabular-nums; }
+.team-profile-details, .team-profile-edit { margin-top: 18px; }
+.team-profile-details .card-head, .team-profile-edit .card-head { align-items: center; }
+.team-profile-details .card-kicker, .team-profile-edit .card-kicker { margin-bottom: 5px; }
+.team-profile-type { display: inline-flex; align-items: center; gap: 8px; color: #a8c3f2; font-size: 13px; }
+.team-profile-data-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 20px; margin: 18px 0 0; }
+.team-profile-data-list > div { padding: 15px 0; border-top: 1px solid var(--line-soft); }
+.team-profile-data-list dt { color: var(--muted); font-size: 12px; }
+.team-profile-data-list dd { margin: 5px 0 0; color: var(--ink); font-size: 14px; font-weight: 600; }
+.team-profile-form-actions { display: flex; align-items: center; gap: 8px; }
+.team-profile-form-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 18px; }
+.team-profile-missing { max-width: 650px; margin: 48px auto; }
+.team-profile-missing .btn { margin-top: 18px; }
+
+@media (max-width: 1200px) {
+  .team-profile-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .team-layout > div:last-child { grid-template-columns: 1fr; }
+  .team-layout > div:last-child > .card:last-child { grid-column: auto; }
+  .team-profile-data-list, .team-profile-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .team-kpis .kpi-card { min-height: 120px; }
+  .team-profile-heading { flex-wrap: wrap; }
+  .team-profile-heading-actions { width: 100%; margin-left: 74px; }
+  .team-profile-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .team-profile-data-list, .team-profile-form-grid { grid-template-columns: 1fr; }
+  .team-profile-details, .team-profile-edit { padding: 18px; }
+  .team-profile-details .card-head, .team-profile-edit .card-head { align-items: flex-start; flex-direction: column; }
+  .team-profile-form-actions { width: 100%; flex-wrap: wrap; }
+}
