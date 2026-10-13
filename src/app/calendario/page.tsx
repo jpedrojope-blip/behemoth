@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Plus, Trash2, X, Zap } from "lucide-react";
+import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Filter, Plus, Trash2, X, Zap } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, useResource } from "@/lib/client";
 import { brl, shortDate } from "@/lib/format";
@@ -25,10 +25,17 @@ const KIND_TONES: Record<CalendarEvent["kind"], string> = {
   MEETING: "blue",
   TASK: "purple",
   PAYMENT: "amber",
-  EVENT: "gray",
+  EVENT: "green",
 };
 
-const WEEKDAYS = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
+const WEEKDAYS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const MINI_WEEKDAYS = ["D", "S", "T", "Q", "Q", "S", "S"];
+
+type CalendarDay = { date: string; day: number; inMonth: boolean };
+
+function dateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
 
 function monthKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -36,7 +43,8 @@ function monthKey(date: Date) {
 
 export default function CalendarioPage() {
   const [cursor, setCursor] = useState(() => new Date());
-  const [selectedDay, setSelectedDay] = useState(() => new Date().toISOString().slice(0, 10));
+  const [selectedDay, setSelectedDay] = useState(() => dateKey(new Date()));
+  const [kindFilter, setKindFilter] = useState<"ALL" | CalendarEvent["kind"]>("ALL");
   const [formOpen, setFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const notify = useToast();
@@ -54,26 +62,50 @@ export default function CalendarioPage() {
     amount: "",
   });
 
-  const cells = useMemo(() => {
+  const cells = useMemo<CalendarDay[]>(() => {
     const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
     const daysInMonth = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
-    const offset = (first.getDay() + 6) % 7;
-    const list: (string | null)[] = Array.from({ length: offset }, () => null);
-    for (let day = 1; day <= daysInMonth; day += 1) {
-      list.push(`${month}-${String(day).padStart(2, "0")}`);
-    }
-    return list;
-  }, [cursor, month]);
+    const offset = first.getDay();
+    const cellCount = Math.ceil((offset + daysInMonth) / 7) * 7;
+    return Array.from({ length: cellCount }, (_, index) => {
+      const date = new Date(cursor.getFullYear(), cursor.getMonth(), index - offset + 1);
+      return { date: dateKey(date), day: date.getDate(), inMonth: date.getMonth() === cursor.getMonth() };
+    });
+  }, [cursor]);
+
+  const monthOptions = useMemo(
+    () => Array.from({ length: 25 }, (_, index) => new Date(cursor.getFullYear(), cursor.getMonth() + index - 12, 1)),
+    [cursor],
+  );
+
+  const visibleEvents = useMemo(
+    () => (data?.events ?? []).filter((event) => kindFilter === "ALL" || event.kind === kindFilter),
+    [data, kindFilter],
+  );
 
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
-    for (const event of data?.events ?? []) {
+    for (const event of visibleEvents) {
       map.set(event.date, [...(map.get(event.date) ?? []), event]);
     }
     return map;
-  }, [data]);
+  }, [visibleEvents]);
 
-  const dayEvents = eventsByDay.get(selectedDay) ?? [];
+  const dayEvents = [...(eventsByDay.get(selectedDay) ?? [])].sort((a, b) => a.time.localeCompare(b.time));
+
+  function selectDay(day: string) {
+    setSelectedDay(day);
+    const [year, monthNumber] = day.split("-").map(Number);
+    if (`${year}-${String(monthNumber).padStart(2, "0")}` !== month) {
+      setCursor(new Date(year, monthNumber - 1, 1));
+    }
+  }
+
+  function openFormForDay(day: string) {
+    selectDay(day);
+    setForm((current) => ({ ...current, date: day }));
+    setFormOpen(true);
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -112,26 +144,61 @@ export default function CalendarioPage() {
     setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
   }
 
+  function goToToday() {
+    const today = new Date();
+    setCursor(new Date(today.getFullYear(), today.getMonth(), 1));
+    selectDay(dateKey(today));
+  }
+
   return (
-    <div className="page-wrap">
-      <div className="page-head">
+    <div className="page-wrap calendar-page">
+      <div className="page-head calendar-page-head">
         <div>
           <p className="eyebrow">CALENDÁRIO</p>
-          <h1 className="page-title">Agenda operacional</h1>
+          <h1 className="page-title">Calendário</h1>
+          <p className="subtitle">Gerencie sua agenda, compromissos e vencimentos.</p>
           <p className="subtitle">
             {data?.summary.today ?? 0} compromisso(s) hoje · {data?.summary.pending ?? 0} em aberto neste mês
           {(data?.summary.late ?? 0) > 0 ? ` · ${data?.summary.late} atrasado(s)` : ""}.
           </p>
         </div>
+        <div className="calendar-page-actions">
+          <label className="calendar-control">
+            <Filter size={15} aria-hidden="true" />
+            <select aria-label="Filtrar compromissos por tipo" value={kindFilter} onChange={(event) => setKindFilter(event.target.value as typeof kindFilter)}>
+              <option value="ALL">Todos os tipos</option>
+              {Object.entries(KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            <ChevronDown size={14} aria-hidden="true" />
+          </label>
+          <label className="calendar-control calendar-month-select">
+            <CalendarDays size={15} aria-hidden="true" />
+            <select
+              aria-label="Escolher mês"
+              value={month}
+              onChange={(event) => {
+                const [year, monthNumber] = event.target.value.split("-").map(Number);
+                setCursor(new Date(year, monthNumber - 1, 1));
+              }}
+            >
+              {monthOptions.map((option) => (
+                <option key={monthKey(option)} value={monthKey(option)}>
+                  {option.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={14} aria-hidden="true" />
+          </label>
         <button
           className="btn btn-primary"
           onClick={() => {
-            setForm({ ...form, date: selectedDay });
-            setFormOpen((open) => !open);
+            if (formOpen) setFormOpen(false);
+            else openFormForDay(selectedDay);
           }}
         >
           {formOpen ? <X size={16} /> : <Plus size={16} />} {formOpen ? "Cancelar" : "Novo compromisso"}
         </button>
+        </div>
       </div>
 
       {error && <p className="form-error">{error}</p>}
@@ -229,42 +296,46 @@ export default function CalendarioPage() {
         </form>
       )}
 
-      <section className="section split calendar-layout">
+      <section className="calendar-page-layout">
         <div className="card calendar-main-card">
-          <div className="section-head">
-            <h2>{cursor.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</h2>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button className="icon-action" onClick={() => shiftMonth(-1)} aria-label="Mês anterior">
+          <div className="calendar-main-toolbar">
+            <div className="calendar-month-navigation">
+              <button className="calendar-today-button" onClick={goToToday}>Hoje</button>
+              <button className="calendar-arrow-button" onClick={() => shiftMonth(-1)} aria-label="Mês anterior">
                 <ChevronLeft size={16} />
               </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setCursor(new Date())}>
-                Hoje
-              </button>
-              <button className="icon-action" onClick={() => shiftMonth(1)} aria-label="Próximo mês">
+              <button className="calendar-arrow-button" onClick={() => shiftMonth(1)} aria-label="Próximo mês">
                 <ChevronRight size={16} />
               </button>
             </div>
+            <h2>{cursor.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</h2>
+            <span aria-hidden="true" />
           </div>
 
-          <div className="calendar-grid">
+          <div className="calendar-grid" role="grid" aria-label="Calendário mensal">
             {WEEKDAYS.map((weekday) => (
-              <div key={weekday} className="calendar-weekday">
-                {weekday}
-              </div>
+              <div key={weekday} className="calendar-weekday" role="columnheader">{weekday}</div>
             ))}
-            {cells.map((day, index) => {
-              if (!day) return <div key={`empty-${index}`} className="calendar-cell empty-cell" />;
-              const events = eventsByDay.get(day) ?? [];
-              const isToday = day === data?.today;
-              const isSelected = day === selectedDay;
+            {cells.map((day) => {
+              const events = eventsByDay.get(day.date) ?? [];
+              const isToday = day.date === data?.today;
+              const isSelected = day.date === selectedDay;
               return (
-                <button
-                  key={day}
-                  className={`calendar-cell ${isToday ? "today" : ""} ${isSelected ? "selected" : ""}`}
-                  onClick={() => setSelectedDay(day)}
+                <div
+                  key={day.date}
+                  className={`calendar-cell ${day.inMonth ? "" : "outside-month"} ${isToday ? "is-today" : ""} ${isSelected ? "is-selected" : ""}`}
+                  role="gridcell"
+                  aria-selected={isSelected}
                 >
-                  <span className="calendar-day">{Number(day.slice(8))}</span>
-                  <span className="calendar-dots">
+                  <div className="calendar-cell-topline">
+                    <button className="calendar-day-select" onClick={() => selectDay(day.date)} aria-label={`Selecionar dia ${day.day}`}>
+                      <span className="calendar-day">{day.day}</span>
+                    </button>
+                    <button className="calendar-add-event" onClick={() => openFormForDay(day.date)} aria-label={`Novo compromisso no dia ${day.day}`}>
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                  <div className="calendar-dots">
                     {events.slice(0, 2).map((event) => (
                       <span
                         key={event.id}
@@ -272,59 +343,88 @@ export default function CalendarioPage() {
                         style={event.done ? { opacity: 0.55, textDecoration: "line-through" } : undefined}
                         title={`${event.time} · ${event.title}`}
                       >
-                        {event.time} {event.title}
+                        <span>{event.time}</span> {event.title}
                       </span>
                     ))}
-                    {events.length > 2 && <span className="calendar-more">+{events.length - 2}</span>}
-                  </span>
-                </button>
+                    {events.length > 2 && <span className="calendar-more">+{events.length - 2} outros</span>}
+                    <span className="calendar-event-indicator" aria-hidden="true">{events.length}</span>
+                  </div>
+                </div>
               );
             })}
           </div>
         </div>
 
-        <div className="card day-agenda-card">
-          <div className="card-head">
-            <div>
-              <p className="card-kicker">{shortDate(selectedDay)}</p>
-              <h2>Compromissos do dia</h2>
+        <aside className="calendar-side-column">
+          <section className="card mini-calendar-card" aria-label="Seletor de dia">
+            <div className="mini-calendar-heading">
+              <h2>{cursor.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</h2>
+              <div>
+                <button className="mini-calendar-arrow" onClick={() => shiftMonth(-1)} aria-label="Mês anterior">
+                  <ChevronLeft size={15} />
+                </button>
+                <button className="mini-calendar-arrow" onClick={() => shiftMonth(1)} aria-label="Próximo mês">
+                  <ChevronRight size={15} />
+                </button>
+              </div>
             </div>
-          </div>
-          <div style={{ marginTop: 12 }}>
-            {dayEvents
-              .sort((a, b) => a.time.localeCompare(b.time))
-              .map((event) => (
-                <div className="list-item" key={event.id}>
+            <div className="mini-calendar-grid" role="grid" aria-label="Dias do mês">
+              {MINI_WEEKDAYS.map((weekday, index) => <span key={`${weekday}-${index}`} className="mini-calendar-weekday">{weekday}</span>)}
+              {cells.map((day) => (
+                <button
+                  key={day.date}
+                  className={`mini-calendar-day ${day.inMonth ? "" : "outside-month"} ${day.date === data?.today ? "is-today" : ""} ${day.date === selectedDay ? "is-selected" : ""} ${eventsByDay.has(day.date) ? "has-events" : ""}`}
+                  onClick={() => selectDay(day.date)}
+                  aria-label={`Selecionar dia ${day.day}`}
+                  aria-pressed={day.date === selectedDay}
+                >
+                  {day.day}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="card day-agenda-card">
+            <div className="calendar-agenda-heading">
+              <div>
+                <p className="calendar-date-label">{shortDate(selectedDay)}</p>
+                <h2>Agenda do Dia</h2>
+              </div>
+              <span className="calendar-agenda-count">{dayEvents.length}</span>
+            </div>
+            <div className="calendar-agenda-list">
+              {dayEvents.map((event) => (
+                <article className={`calendar-agenda-event ${KIND_TONES[event.kind]}`} key={event.id}>
                   <button
-                    className={`check ${event.done ? "done" : ""}`}
+                    className={`calendar-agenda-check ${event.done ? "done" : ""}`}
                     onClick={() => toggle(event)}
-                    title={event.done ? "Reabrir" : "Concluir"}
+                    aria-label={event.done ? `Reabrir ${event.title}` : `Concluir ${event.title}`}
                   >
-                    {event.done && <Check size={13} />}
+                    {event.done && <Check size={12} />}
                   </button>
-                  <div className="grow">
-                    <strong style={event.done ? { textDecoration: "line-through", opacity: 0.6 } : undefined}>
-                      {event.time} · {event.title}
-                    </strong>
-                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      {event.owner} · {event.durationMinutes} min
-                      {typeof event.amount === "number" && event.amount > 0 && ` · ${brl(event.amount)}`}
-                      {event.auto && (
-                        <span className="pill purple" title="Criado por automação">
-                          <Zap size={10} /> auto
-                        </span>
-                      )}
+                  <span className="calendar-agenda-dot" aria-hidden="true" />
+                  <div className="calendar-agenda-info">
+                    <span className="calendar-agenda-time">{event.time} · {event.durationMinutes} min</span>
+                    <strong className={event.done ? "is-done" : ""}>{event.title}</strong>
+                    <span className="calendar-agenda-owner">
+                      {event.owner}{typeof event.amount === "number" && event.amount > 0 ? ` · ${brl(event.amount)}` : ""}
+                      {event.auto && <span className="calendar-auto"><Zap size={10} /> auto</span>}
                     </span>
                   </div>
-                  <span className={`pill ${KIND_TONES[event.kind]}`}>{KIND_LABELS[event.kind]}</span>
-                  <button className="icon-action danger" onClick={() => remove(event)} title="Excluir">
+                  <span className={`calendar-kind-pill ${KIND_TONES[event.kind]}`}>{KIND_LABELS[event.kind]}</span>
+                  <button className="calendar-delete-event" onClick={() => remove(event)} aria-label={`Excluir ${event.title}`}>
                     <Trash2 size={14} />
                   </button>
-                </div>
+                </article>
               ))}
-            {!dayEvents.length && !loading && <p className="empty">Nenhum compromisso neste dia.</p>}
-          </div>
-        </div>
+              {!dayEvents.length && !loading && <p className="calendar-empty-day">Nenhum compromisso neste dia.</p>}
+              {loading && !data && <p className="calendar-empty-day">Carregando agenda...</p>}
+            </div>
+            <button className="calendar-full-day-button" onClick={() => openFormForDay(selectedDay)}>
+              <Plus size={15} /> Adicionar compromisso
+            </button>
+          </section>
+        </aside>
       </section>
     </div>
   );
