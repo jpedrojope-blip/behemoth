@@ -10,6 +10,7 @@ export const transactionCreateSchema = z.object({
   amount: money,
   kind: z.enum(["INCOME", "EXPENSE"]),
   category: z.string().trim().optional(),
+  accountCode: z.string().trim().max(24).optional(),
   date: isoDate.optional(),
   competenceDate: isoDate.optional(),
   cashDate: isoDate.optional(),
@@ -25,6 +26,7 @@ export const transactionUpdateSchema = z.object({
   amount: money.optional(),
   kind: z.enum(["INCOME", "EXPENSE"]).optional(),
   category: z.string().trim().min(1).optional(),
+  accountCode: z.string().trim().max(24).optional(),
   date: isoDate.optional(),
   competenceDate: isoDate.optional(),
   cashDate: isoDate.optional(),
@@ -122,6 +124,10 @@ export const resetSchema = z.object({
 export const loginSchema = z.object({
   email: z.string().email("Email inválido."),
   password: z.string().min(1, "Informe a senha."),
+});
+
+export const signupSchema = loginSchema.extend({
+  name: z.string().trim().min(1).max(60).optional(),
 });
 
 type ParseResult<T> = { ok: true; data: T } | { ok: false; response: NextResponse };

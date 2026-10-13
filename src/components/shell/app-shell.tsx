@@ -48,6 +48,8 @@ const NICHES = [
 const PLANS = ["Basic", "Pro", "Enterprise"];
 
 type ShellData = { company: Company; openActionItems: number };
+type SessionUser = { id: string; email: string; name: string; avatarUrl: string | null };
+type SessionPayload = { authenticated: boolean; user: SessionUser | null };
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
@@ -59,6 +61,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   });
   const [authReady, setAuthReady] = useState(pathname === "/login");
   const [shell, setShell] = useState<ShellData | null>(null);
+  const [profile, setProfile] = useState<SessionUser | null>(null);
   const dataVersion = useDataVersion();
 
   useAutoRevalidate();
@@ -67,15 +70,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (pathname === "/login") return;
     let active = true;
     fetch("/api/auth/session", { cache: "no-store" })
-      .then((response) => response.json() as Promise<{ authenticated: boolean }>)
+      .then((response) => response.json() as Promise<SessionPayload>)
       .then((session) => {
         if (!active) return;
         if (!session.authenticated) window.location.replace("/login");
-        else setAuthReady(true);
+        else {
+          setProfile(session.user);
+          setAuthReady(true);
+        }
       })
       .catch(() => window.location.replace("/login"));
     return () => { active = false; };
-  }, [pathname]);
+  }, [pathname, dataVersion]);
 
   function resizeSidebar(event: React.PointerEvent<HTMLDivElement>) {
     const move = (moveEvent: PointerEvent) => {
@@ -132,9 +138,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <img src="/brand/behemoth-logo.png" alt="Behemoth" />
           </Link>
           <Link href="/configuracoes" className="sidebar-user" onClick={close}>
-            <div className="avatar">{initials(company?.ownerName ?? "")}</div>
+            <div className="avatar">
+              {profile?.avatarUrl
+                ? <img src={profile.avatarUrl} alt={`Foto de perfil de ${profile.name}`} />
+                : initials(profile?.name ?? company?.ownerName ?? "")}
+            </div>
             <div>
-              <strong>{company?.ownerName ?? "—"}</strong>
+              <strong>{profile?.name ?? company?.ownerName ?? "—"}</strong>
               <small>Plano {company?.plan ?? "—"}</small>
             </div>
           </Link>

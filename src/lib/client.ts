@@ -55,9 +55,12 @@ export function useDataVersion() {
 
 export async function apiFetch<T>(input: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? "GET").toUpperCase();
+  const headers = new Headers(init?.headers);
+  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
+  if (init?.body && !isFormData && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   const response = await fetch(input, {
     ...init,
-    headers: init?.body ? { "Content-Type": "application/json", ...init?.headers } : init?.headers,
+    headers,
     cache: "no-store",
   });
 

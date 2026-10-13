@@ -38,8 +38,12 @@ export type Transaction = {
   date: string;
   description: string;
   category: string;
+  /** Código contábil de origem; permite agrupar contas sem depender do texto da categoria. */
+  accountCode?: string;
   amount: number;
   source?: string;
+  /** Chave que identifica uma importação em lote e evita duplicar a mesma confirmação. */
+  importBatchId?: string;
   status: TransactionStatus;
   recurrence?: Recurrence;
   /** Relatórios em que o lançamento entra. Ausente = ambos, para dados antigos. */

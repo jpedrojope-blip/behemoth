@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { meetingCreateSchema, parseBody } from "@/lib/schemas";
-import { createId, mutate, recordAudit } from "@/lib/store";
+import { createId, recordAudit } from "@/lib/store";
+import { withWorkspaceDatabase } from "@/lib/workspace-store";
 import type { Meeting } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  return mutate((db) =>
+export async function GET(request: Request) {
+  return withWorkspaceDatabase(request, (db) =>
     NextResponse.json({
       meetings: [...db.meetings].sort((a, b) => b.date.localeCompare(a.date)),
       openActionItems: db.meetings.reduce(
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
   if (!parsed.ok) return parsed.response;
   const body = parsed.data;
 
-  return mutate((db) => {
+  return withWorkspaceDatabase(request, (db) => {
     const meeting: Meeting = {
       id: createId("meeting"),
       companyId: db.company.id,

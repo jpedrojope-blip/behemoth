@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { parseBody, teamCreateSchema } from "@/lib/schemas";
-import { createId, mutate, recordAudit } from "@/lib/store";
+import { createId, recordAudit } from "@/lib/store";
+import { withWorkspaceDatabase } from "@/lib/workspace-store";
 import type { TeamMember } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -24,8 +25,8 @@ function summarize(team: TeamMember[]) {
   };
 }
 
-export async function GET() {
-  return mutate((db) =>
+export async function GET(request: Request) {
+  return withWorkspaceDatabase(request, (db) =>
     NextResponse.json({
       team: db.team,
       summary: summarize(db.team),
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
   if (!parsed.ok) return parsed.response;
   const body = parsed.data;
 
-  return mutate((db) => {
+  return withWorkspaceDatabase(request, (db) => {
     const member: TeamMember = {
       id: createId(body.type === "AI" ? "agent" : "member"),
       companyId: db.company.id,

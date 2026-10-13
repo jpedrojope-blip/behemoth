@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { eventUpdateSchema, parseBody } from "@/lib/schemas";
-import { dismiss, mutate, recordAudit } from "@/lib/store";
+import { dismiss, recordAudit } from "@/lib/store";
+import { withWorkspaceDatabase } from "@/lib/workspace-store";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export async function PATCH(request: Request, context: Context) {
   if (!parsed.ok) return parsed.response;
   const body = parsed.data;
 
-  return mutate((db) => {
+  return withWorkspaceDatabase(request, (db) => {
     const event = db.events.find((item) => item.id === id);
     if (!event) return NextResponse.json({ error: "Evento não encontrado." }, { status: 404 });
 
@@ -30,9 +31,9 @@ export async function PATCH(request: Request, context: Context) {
   });
 }
 
-export async function DELETE(_request: Request, context: Context) {
+export async function DELETE(request: Request, context: Context) {
   const { id } = await context.params;
-  return mutate((db) => {
+  return withWorkspaceDatabase(request, (db) => {
     const index = db.events.findIndex((item) => item.id === id);
     if (index === -1) return NextResponse.json({ error: "Evento não encontrado." }, { status: 404 });
 

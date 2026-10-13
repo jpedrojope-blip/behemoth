@@ -142,7 +142,7 @@ function isDirectCost(category: string) {
 }
 
 function isFinancial(category: string) {
-  return categoryMatches(category, /financeir|juros|tarifa bancaria|rendimento|aplicacao financeira/);
+  return categoryMatches(category, /financeir|juros|tarifas? bancaria|taxas? bancaria|rendimento|aplicacao financeira/);
 }
 
 function isNonOperating(category: string) {
@@ -157,9 +157,66 @@ function isFinancing(category: string) {
   return categoryMatches(category, /aumento.*divida|aporte.*soci|pagamento.*divida|dividendo|emprestimo|financiamento/);
 }
 
+type AccountGroup = "REVENUE" | "TAX" | "DIRECT_COST" | "OPERATING_FIXED" | "OPERATING_VARIABLE" | "OPERATING" | "FINANCIAL" | "NON_OPERATING" | "INVESTMENT" | "FINANCING";
+
+function accountGroup(code?: string): AccountGroup | null {
+  const normalizedCode = code?.trim().replace(/,/g, ".");
+  if (!normalizedCode) return null;
+  if (/^1(?:\.|$)/.test(normalizedCode)) return "REVENUE";
+  if (/^2(?:\.|$)/.test(normalizedCode)) return "TAX";
+  if (/^3(?:\.|$)/.test(normalizedCode)) return "DIRECT_COST";
+  if (/^4\.0?1(?:\.|$)|^4\.0?2(?:\.|$)/.test(normalizedCode)) return "OPERATING_FIXED";
+  if (/^4\.0?3(?:\.|$)/.test(normalizedCode)) return "OPERATING_VARIABLE";
+  if (/^4(?:\.|$)/.test(normalizedCode)) return "OPERATING";
+  if (/^5(?:\.|$)/.test(normalizedCode)) return "FINANCIAL";
+  if (/^6(?:\.|$)/.test(normalizedCode)) return "NON_OPERATING";
+  if (/^7(?:\.|$)/.test(normalizedCode)) return "INVESTMENT";
+  if (/^8(?:\.|$)/.test(normalizedCode)) return "FINANCING";
+  return null;
+}
+
+function transactionIsTax(transaction: Transaction) {
+  const group = accountGroup(transaction.accountCode);
+  return group ? group === "TAX" : isTax(transaction.category);
+}
+
+function transactionIsDirectCost(transaction: Transaction) {
+  const group = accountGroup(transaction.accountCode);
+  return group ? group === "DIRECT_COST" : isDirectCost(transaction.category);
+}
+
+function transactionIsFinancial(transaction: Transaction) {
+  const group = accountGroup(transaction.accountCode);
+  return group ? group === "FINANCIAL" : isFinancial(transaction.category);
+}
+
+function transactionIsNonOperating(transaction: Transaction) {
+  const group = accountGroup(transaction.accountCode);
+  return group ? group === "NON_OPERATING" : isNonOperating(transaction.category);
+}
+
+function transactionIsInvestment(transaction: Transaction) {
+  const group = accountGroup(transaction.accountCode);
+  return group ? group === "INVESTMENT" : isInvestment(transaction.category);
+}
+
+function transactionIsFinancing(transaction: Transaction) {
+  const group = accountGroup(transaction.accountCode);
+  return group ? group === "FINANCING" : isFinancing(transaction.category);
+}
+
+function transactionIsOperatingIncome(transaction: Transaction) {
+  const group = accountGroup(transaction.accountCode);
+  if (group) return group === "REVENUE" || group === "OPERATING" || group === "OPERATING_FIXED" || group === "OPERATING_VARIABLE";
+  return !isFinancial(transaction.category) && !isNonOperating(transaction.category) && !isInvestment(transaction.category) && !isFinancing(transaction.category);
+}
+
 function isVariableExpense(transaction: Transaction) {
   if (transaction.costBehavior === "FIXED") return false;
   if (transaction.costBehavior === "VARIABLE") return true;
+  const group = accountGroup(transaction.accountCode);
+  if (group === "TAX" || group === "DIRECT_COST" || group === "OPERATING_VARIABLE") return true;
+  if (group === "OPERATING_FIXED") return false;
   return (
     isTax(transaction.category) ||
     isDirectCost(transaction.category) ||
@@ -175,22 +232,18 @@ export function calculateFinancials(transactions: Transaction[]): Financials {
   const confirmed = statementTransactions(transactions, "DRE");
   const income = confirmed.filter((transaction) => transaction.kind === "INCOME");
   const expenses = confirmed.filter((transaction) => transaction.kind === "EXPENSE");
-  const incomeFor = (predicate: (category: string) => boolean) => sum(income.filter((transaction) => predicate(transaction.category)));
-  const expenseFor = (predicate: (category: string) => boolean) => sum(expenses.filter((transaction) => predicate(transaction.category)));
-  const operatingIncome = income.filter(
-    (transaction) => !isFinancial(transaction.category) && !isNonOperating(transaction.category) && !isInvestment(transaction.category) && !isFinancing(transaction.category),
-  );
+  const operatingIncome = income.filter(transactionIsOperatingIncome);
   const operatingExpensesList = expenses.filter(
-    (transaction) => !isTax(transaction.category) && !isDirectCost(transaction.category) && !isFinancial(transaction.category) && !isNonOperating(transaction.category) && !isInvestment(transaction.category) && !isFinancing(transaction.category),
+    (transaction) => !transactionIsTax(transaction) && !transactionIsDirectCost(transaction) && !transactionIsFinancial(transaction) && !transactionIsNonOperating(transaction) && !transactionIsInvestment(transaction) && !transactionIsFinancing(transaction),
   );
-  const reportExpenses = expenses.filter((transaction) => !isInvestment(transaction.category) && !isFinancing(transaction.category));
+  const reportExpenses = expenses.filter((transaction) => !transactionIsInvestment(transaction) && !transactionIsFinancing(transaction));
   const grossRevenue = sum(operatingIncome);
-  const taxes = expenseFor(isTax);
-  const cmv = expenseFor(isDirectCost);
-  const financialIncome = incomeFor(isFinancial);
-  const financialExpense = expenseFor(isFinancial);
-  const nonOperatingIncome = incomeFor(isNonOperating);
-  const nonOperatingExpense = expenseFor(isNonOperating);
+  const taxes = sum(expenses.filter(transactionIsTax));
+  const cmv = sum(expenses.filter(transactionIsDirectCost));
+  const financialIncome = sum(income.filter(transactionIsFinancial));
+  const financialExpense = sum(expenses.filter(transactionIsFinancial));
+  const nonOperatingIncome = sum(income.filter(transactionIsNonOperating));
+  const nonOperatingExpense = sum(expenses.filter(transactionIsNonOperating));
   const financialResult = financialIncome - financialExpense;
   const nonOperatingResult = nonOperatingIncome - nonOperatingExpense;
   const operationalExpenses = sum(operatingExpensesList);
@@ -240,24 +293,20 @@ export function calculateCashFlow(transactions: Transaction[]): CashFlowFinancia
   const confirmed = statementTransactions(transactions, "DFC");
   const income = confirmed.filter((transaction) => transaction.kind === "INCOME");
   const expenses = confirmed.filter((transaction) => transaction.kind === "EXPENSE");
-  const sumFor = (items: Transaction[], predicate: (category: string) => boolean) =>
-    sum(items.filter((transaction) => predicate(transaction.category)));
-  const operatingIncome = income.filter(
-    (transaction) => !isFinancial(transaction.category) && !isNonOperating(transaction.category) && !isInvestment(transaction.category) && !isFinancing(transaction.category),
-  );
-  const taxes = sumFor(expenses, isTax);
-  const cmv = sumFor(expenses, isDirectCost);
+  const operatingIncome = income.filter(transactionIsOperatingIncome);
+  const taxes = sum(expenses.filter(transactionIsTax));
+  const cmv = sum(expenses.filter(transactionIsDirectCost));
   const operatingExpenses = sum(
     expenses.filter(
-      (transaction) => !isTax(transaction.category) && !isDirectCost(transaction.category) && !isFinancial(transaction.category) && !isNonOperating(transaction.category) && !isInvestment(transaction.category) && !isFinancing(transaction.category),
+      (transaction) => !transactionIsTax(transaction) && !transactionIsDirectCost(transaction) && !transactionIsFinancial(transaction) && !transactionIsNonOperating(transaction) && !transactionIsInvestment(transaction) && !transactionIsFinancing(transaction),
     ),
   );
-  const financialResult = sumFor(income, isFinancial) - sumFor(expenses, isFinancial);
-  const nonOperating = sumFor(income, isNonOperating) - sumFor(expenses, isNonOperating);
-  const investments = -sumFor(expenses, isInvestment);
+  const financialResult = sum(income.filter(transactionIsFinancial)) - sum(expenses.filter(transactionIsFinancial));
+  const nonOperating = sum(income.filter(transactionIsNonOperating)) - sum(expenses.filter(transactionIsNonOperating));
+  const investments = -sum(expenses.filter(transactionIsInvestment));
   const financing =
-    sumFor(income, isFinancing) -
-    sumFor(expenses, isFinancing);
+    sum(income.filter(transactionIsFinancing)) -
+    sum(expenses.filter(transactionIsFinancing));
   const operational = sum(operatingIncome) - taxes - cmv - operatingExpenses + financialResult;
   return { operational, nonOperating, investments, financing, freeCashFlow: operational + nonOperating + investments + financing };
 }
@@ -323,8 +372,8 @@ export function categoryBreakdown(transactions: Transaction[], kind: Transaction
       transaction.status === "CONFIRMED" &&
       reportIncludes(transaction, "DRE") &&
       (kind === "INCOME"
-        ? !isFinancial(transaction.category) && !isNonOperating(transaction.category) && !isInvestment(transaction.category) && !isFinancing(transaction.category)
-        : !isInvestment(transaction.category) && !isFinancing(transaction.category)),
+        ? !transactionIsFinancial(transaction) && !transactionIsNonOperating(transaction) && !transactionIsInvestment(transaction) && !transactionIsFinancing(transaction)
+        : !transactionIsInvestment(transaction) && !transactionIsFinancing(transaction)),
   );
   const total = sum(scoped);
   const totals = new Map<string, number>();

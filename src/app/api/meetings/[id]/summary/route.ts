@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
-import { mutate, recordAudit } from "@/lib/store";
+import { recordAudit } from "@/lib/store";
+import { withWorkspaceDatabase } from "@/lib/workspace-store";
 import { summarizeMeeting } from "@/lib/summarize";
 
 export const dynamic = "force-dynamic";
 
 type Context = { params: Promise<{ id: string }> };
 
-export async function POST(_request: Request, context: Context) {
+export async function POST(request: Request, context: Context) {
   const { id } = await context.params;
 
-  return mutate((db) => {
+  return withWorkspaceDatabase(request, (db) => {
     const meeting = db.meetings.find((item) => item.id === id);
     if (!meeting) return NextResponse.json({ error: "Reunião não encontrada." }, { status: 404 });
 

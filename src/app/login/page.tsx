@@ -5,10 +5,18 @@ import { ArrowRight, LockKeyhole } from "lucide-react";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [password, setPassword] = useState("");
   const [registering, setRegistering] = useState(false);
+  const suggestedName = (email.split("@")[0] ?? "")
+    .replace(/[._-]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toLocaleUpperCase("pt-BR") + part.slice(1))
+    .join(" ");
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -18,7 +26,7 @@ export default function LoginPage() {
       const response = await fetch(registering ? "/api/auth/signup" : "/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(registering ? { email, password, name: displayName.trim() || suggestedName } : { email, password }),
       });
       if (!response.ok) {
         const payload = (await response.json().catch(() => ({}))) as { error?: string };
@@ -43,6 +51,11 @@ export default function LoginPage() {
         <form onSubmit={submit} className="login-form">
           <label htmlFor="email">E-mail</label>
           <input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="voce@empresa.com" required />
+          {registering && <>
+            <label htmlFor="displayName">Como quer ser chamado?</label>
+            <input id="displayName" type="text" value={displayName || suggestedName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Seu nome de exibição" maxLength={60} required />
+            <p className="small muted">Sugerimos um nome pelo e-mail. Você pode editar depois nas configurações.</p>
+          </>}
           <label htmlFor="password">Senha</label>
           <input id="password" type="password" placeholder="Senha" value={password} onChange={(event) => setPassword(event.target.value)} minLength={6} required />
           {error && <p className="form-error">{error}</p>}
@@ -50,7 +63,7 @@ export default function LoginPage() {
             <LockKeyhole size={16} /> {loading ? "Aguarde..." : registering ? "Criar conta" : "Entrar"} <ArrowRight size={16} />
           </button>
         </form>
-        <button className="login-switch" onClick={() => { setRegistering(!registering); setError(""); }}>
+        <button className="login-switch" onClick={() => { setRegistering(!registering); setDisplayName(""); setError(""); }}>
           {registering ? "Já tenho uma conta" : "Ainda não tenho conta"}
         </button>
         <div className="login-promise" aria-label="Promessa da Behemoth">

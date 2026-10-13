@@ -11,7 +11,7 @@ import {
   weekdayBreakdown,
   type Period,
 } from "@/lib/finance";
-import { getDatabase } from "@/lib/store";
+import { withWorkspaceDatabase } from "@/lib/workspace-store";
 
 export const dynamic = "force-dynamic";
 
@@ -19,8 +19,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const requested = url.searchParams.get("period");
   const period: Period = isPeriod(requested) ? requested : "mes";
-  const db = getDatabase();
-
+  return withWorkspaceDatabase(request, (db) => {
   const scoped = filterByPeriod(db.transactions, period);
   const current = calculateFinancials(scoped);
   const previous = calculateFinancials(previousPeriod(db.transactions, period));
@@ -60,5 +59,6 @@ export async function GET(request: Request) {
     recentTransactions: [...db.transactions]
       .sort((a, b) => b.date.localeCompare(a.date))
       .slice(0, 5),
+  });
   });
 }

@@ -102,10 +102,45 @@ export function parseSessionCookie(value: string) {
   } catch { return null; }
 }
 
+export function sessionFromRequest(request: Request) {
+  const raw = request.headers.get("cookie")?.match(/(?:^|;\s*)behemoth_session=([^;]+)/)?.[1];
+  if (!raw) return null;
+  try { return parseSessionCookie(decodeURIComponent(raw)); }
+  catch { return null; }
+}
+
 export async function getUserFromAccessToken(token: string): Promise<User | LocalUser | null> {
   if (token.startsWith("local.")) {
     return usesLocalDemoAuth() ? findUserBySessionToken(token) : null;
   }
   const { data } = await getPublicClient().auth.getUser(token);
   return data.user;
+}
+
+export async function userFromRequest(request: Request): Promise<User | LocalUser | null> {
+  const session = sessionFromRequest(request);
+  return session ? getUserFromAccessToken(session.accessToken) : null;
+}
+
+export function profileFromUser(user: User | LocalUser) {
+  const email = user.email ?? "";
+  const localPart = email.split("@")[0] ?? "";
+  const suggestedName = localPart
+    .replace(/[._-]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toLocaleUpperCase("pt-BR") + part.slice(1))
+    .join(" ");
+  const metadata = "user_metadata" in user ? user.user_metadata : null;
+  const metadataName = metadata && typeof metadata.display_name === "string"
+    ? metadata.display_name
+    : metadata && typeof metadata.name === "string" ? metadata.name : null;
+  const name = "name" in user && typeof user.name === "string" && user.name.trim()
+    ? user.name.trim()
+    : metadataName?.trim() || suggestedName || "Você";
+  const avatarUrl = "avatarUrl" in user && typeof user.avatarUrl === "string"
+    ? user.avatarUrl
+    : metadata && typeof metadata.avatar_url === "string" ? metadata.avatar_url : null;
+  return { id: user.id, email, name, avatarUrl };
 }
