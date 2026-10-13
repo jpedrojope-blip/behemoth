@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
 import { parseBody, teamUpdateSchema } from "@/lib/schemas";
-import { mutate, recordAudit } from "@/lib/store";
+import { getDatabase, mutate, recordAudit } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
 type Context = { params: Promise<{ id: string }> };
+
+export async function GET(_request: Request, context: Context) {
+  const { id } = await context.params;
+  const member = getDatabase().team.find((item) => item.id === id);
+  if (!member) return NextResponse.json({ error: "Integrante não encontrado." }, { status: 404 });
+  return NextResponse.json(member);
+}
 
 export async function PATCH(request: Request, context: Context) {
   const { id } = await context.params;
