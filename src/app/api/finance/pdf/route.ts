@@ -171,7 +171,7 @@ function headerColumns(row: unknown[]) {
   };
 }
 
-export function parseWorkbookTransactions(buffer: Buffer) {
+function parseWorkbookTransactions(buffer: Buffer) {
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
   const rows: ImportedTransaction[] = [];
   const warnings: string[] = [];
