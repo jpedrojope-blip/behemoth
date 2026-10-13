@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import { meetingUpdateSchema, parseBody } from "@/lib/schemas";
-import { createId, mutate, recordAudit } from "@/lib/store";
+import { createId, recordAudit } from "@/lib/store";
+import { withWorkspaceDatabase } from "@/lib/workspace-store";
 
 export const dynamic = "force-dynamic";
 
 type Context = { params: Promise<{ id: string }> };
 
-export async function GET(_request: Request, context: Context) {
+export async function GET(request: Request, context: Context) {
   const { id } = await context.params;
-  return mutate((db) => {
+  return withWorkspaceDatabase(request, (db) => {
     const meeting = db.meetings.find((item) => item.id === id);
     if (!meeting) return NextResponse.json({ error: "Reunião não encontrada." }, { status: 404 });
     return NextResponse.json({ meeting });
@@ -21,7 +22,7 @@ export async function PATCH(request: Request, context: Context) {
   if (!parsed.ok) return parsed.response;
   const { actionItems, ...rest } = parsed.data;
 
-  return mutate((db) => {
+  return withWorkspaceDatabase(request, (db) => {
     const meeting = db.meetings.find((item) => item.id === id);
     if (!meeting) return NextResponse.json({ error: "Reunião não encontrada." }, { status: 404 });
 
@@ -35,9 +36,9 @@ export async function PATCH(request: Request, context: Context) {
   });
 }
 
-export async function DELETE(_request: Request, context: Context) {
+export async function DELETE(request: Request, context: Context) {
   const { id } = await context.params;
-  return mutate((db) => {
+  return withWorkspaceDatabase(request, (db) => {
     const index = db.meetings.findIndex((item) => item.id === id);
     if (index === -1) return NextResponse.json({ error: "Reunião não encontrada." }, { status: 404 });
     db.meetings.splice(index, 1);

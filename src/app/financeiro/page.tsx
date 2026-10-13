@@ -49,6 +49,19 @@ type Payload = {
 };
 
 type PdfAnalysis = { summary: { grossRevenue: number; taxes: number; netRevenue: number; cmv: number; grossProfit: number; operatingExpenses: number; financialIncome: number; financialExpense: number; nonOperatingIncome: number; nonOperatingExpense: number; investments: number; financingIn: number; financingOut: number; netProfit: number; grossMargin: number | null; netMargin: number | null; operationalCashFlow: number; freeCashFlow: number; projectedFixedOutflow: number }; warnings: string[] };
+type ImportTransaction = Pick<Transaction, "date" | "description" | "amount" | "kind" | "category" | "financialReport" | "competenceDate" | "cashDate" | "costBehavior">;
+
+const IMPORT_BATCH_SIZE = 500;
+
+async function importChunkIds(file: File, chunkCount: number) {
+  const bytes = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", await file.arrayBuffer()));
+  const fileHash = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Promise.all(Array.from({ length: chunkCount }, async (_, index) => {
+    const input = new TextEncoder().encode(`${fileHash}:${index}`);
+    const hash = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", input));
+    return [...hash].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  }));
+}
 
 type FinanceSectionId = "summary" | "charts" | "dre" | "cashflow" | "transactions";
 
@@ -72,25 +85,6 @@ function readFinanceSections(): Set<FinanceSectionId> {
   } catch {
     return new Set(DEFAULT_FINANCE_SECTIONS);
   }
-}
-
-function summaryTransactions(analysis: PdfAnalysis) {
-  const now = new Date();
-  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const values: Array<[string, number, Transaction["kind"], string]> = [
-    ["Receita bruta importada", analysis.summary.grossRevenue, "INCOME", "Receita"],
-    ["Impostos sobre receita importados", analysis.summary.taxes, "EXPENSE", "IMPOSTO"],
-    ["CMV e custos importados", analysis.summary.cmv, "EXPENSE", "CMV"],
-    ["Despesas operacionais importadas", analysis.summary.operatingExpenses, "EXPENSE", "Despesas operacionais"],
-    ["Receita financeira importada", analysis.summary.financialIncome, "INCOME", "Financeira"],
-    ["Despesa financeira importada", analysis.summary.financialExpense, "EXPENSE", "Financeira"],
-    ["Receita não operacional importada", analysis.summary.nonOperatingIncome, "INCOME", "Não operacional"],
-    ["Despesa não operacional importada", analysis.summary.nonOperatingExpense, "EXPENSE", "Não operacional"],
-    ["Investimentos importados", analysis.summary.investments, "EXPENSE", "Investimento"],
-    ["Aportes e novas dívidas importados", analysis.summary.financingIn, "INCOME", "Financiamento"],
-    ["Pagamentos de dívidas e dividendos importados", analysis.summary.financingOut, "EXPENSE", "Financiamento"],
-  ];
-  return values.filter(([, value]) => value > 0).map(([description, amount, kind, category]) => ({ date, description, amount, kind, category }));
 }
 
 const EMPTY_FORM = {
@@ -130,7 +124,9 @@ export default function FinanceiroPage() {
   const [processingPdf, setProcessingPdf] = useState(false);
   const [savingImport, setSavingImport] = useState(false);
   const [pdfImportDone, setPdfImportDone] = useState(false);
-  const [pdfTransactions, setPdfTransactions] = useState<Array<Pick<Transaction, "date" | "description" | "amount" | "kind" | "category">>>([]);
+  const [pdfTransactions, setPdfTransactions] = useState<ImportTransaction[]>([]);
+  const [importIds, setImportIds] = useState<string[]>([]);
+  const [completedImportChunks, setCompletedImportChunks] = useState(0);
   const [pdfAnalysis, setPdfAnalysis] = useState<PdfAnalysis | null>(null);
   const notify = useToast();
 
@@ -181,18 +177,23 @@ export default function FinanceiroPage() {
     setProcessingPdf(true);
     setPdfImportDone(false);
     setPdfTransactions([]);
+    setImportIds([]);
+    setCompletedImportChunks(0);
     setPdfAnalysis(null);
     try {
       const body = new FormData();
       body.append("file", pdfFile);
       const response = await fetch("/api/finance/pdf", { method: "POST", body });
-      const payload = (await response.json()) as { error?: string; transactions?: typeof pdfTransactions; analysis?: PdfAnalysis };
+      const payload = (await response.json()) as { error?: string; transactions?: ImportTransaction[]; analysis?: PdfAnalysis };
       if (!response.ok) throw new Error(payload.error ?? "Não foi possível ler este arquivo.");
       const extracted = payload.transactions ?? [];
-      const imported = extracted.length ? extracted : payload.analysis ? summaryTransactions(payload.analysis) : [];
-      setPdfTransactions(imported);
+      const batches = Math.ceil(extracted.length / IMPORT_BATCH_SIZE);
+      const identifiers = await importChunkIds(pdfFile, batches);
+      setPdfTransactions(extracted);
+      setImportIds(identifiers);
+      setCompletedImportChunks(0);
       setPdfAnalysis(payload.analysis ?? null);
-      notify(imported.length ? `${imported.length} lançamento(s) encontrados. Confira a prévia e confirme a importação.` : "Arquivo lido, mas não encontramos lançamentos financeiros.", imported.length ? "success" : "error");
+      notify(extracted.length ? `${extracted.length} lançamento(s) encontrados. Confira a prévia e confirme a importação.` : "O arquivo foi lido, mas não tem lançamentos detalhados com data para importar.", extracted.length ? "success" : "error");
     } catch (cause) {
       notify(cause instanceof Error ? cause.message : "Erro ao ler o arquivo.", "error");
     } finally {
@@ -203,21 +204,26 @@ export default function FinanceiroPage() {
   async function confirmImport() {
     if (!pdfTransactions.length || pdfImportDone) return;
     setSavingImport(true);
-    let saved = 0;
+    let saved = completedImportChunks * IMPORT_BATCH_SIZE;
     const extension = pdfFile?.name.toLowerCase().split(".").pop();
     const source = extension === "xlsx" || extension === "xls" ? "Excel" : extension === "docx" ? "Word" : "PDF";
     try {
-      for (const item of pdfTransactions) {
-        await apiFetch("/api/transactions", {
+      const totalChunks = Math.ceil(pdfTransactions.length / IMPORT_BATCH_SIZE);
+      for (let chunkIndex = completedImportChunks; chunkIndex < totalChunks; chunkIndex += 1) {
+        const batch = pdfTransactions.slice(chunkIndex * IMPORT_BATCH_SIZE, (chunkIndex + 1) * IMPORT_BATCH_SIZE);
+        await apiFetch("/api/transactions/import", {
           method: "POST",
-          body: JSON.stringify({ ...item, status: "CONFIRMED", source }),
+          body: JSON.stringify({
+            importId: importIds[chunkIndex],
+            transactions: batch.map((item) => ({ ...item, status: "CONFIRMED", source })),
+          }),
         });
-        saved += 1;
+        saved += batch.length;
+        setCompletedImportChunks(chunkIndex + 1);
       }
       setPdfImportDone(true);
       notify(`${saved} lançamento(s) adicionados ao relatório financeiro.`, "success");
     } catch (cause) {
-      if (saved > 0) setPdfTransactions((pending) => pending.slice(saved));
       notify(saved > 0
         ? `${saved} lançamento(s) foram salvos. Ainda restam ${pdfTransactions.length - saved} para importar; você pode continuar sem duplicar os já salvos.`
         : cause instanceof Error ? cause.message : "Não foi possível salvar os lançamentos.", "error");
@@ -311,7 +317,7 @@ export default function FinanceiroPage() {
             <div>
               <p className="card-kicker">IMPORTAÇÃO DE DADOS</p>
               <h2>Importe dados financeiros</h2>
-              <p className="small muted">Leia lançamentos de PDF, planilhas do Excel e documentos do Word (.docx).</p>
+              <p className="small muted">Importe linhas financeiras com data e valor. Revise categorias e classificação DRE/DFC antes de confirmar.</p>
             </div>
           </div>
           <label className="pdf-dropzone" htmlFor="financial-pdf">
@@ -321,6 +327,8 @@ export default function FinanceiroPage() {
             <input id="financial-pdf" type="file" accept="application/pdf,.pdf,.xlsx,.xls,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => {
               setPdfFile(event.target.files?.[0] ?? null);
               setPdfTransactions([]);
+              setImportIds([]);
+              setCompletedImportChunks(0);
               setPdfAnalysis(null);
               setPdfImportDone(false);
             }} />
@@ -335,6 +343,8 @@ export default function FinanceiroPage() {
             {pdfFile && <button className="btn btn-ghost" onClick={() => {
               setPdfFile(null);
               setPdfTransactions([]);
+              setImportIds([]);
+              setCompletedImportChunks(0);
               setPdfAnalysis(null);
               setPdfImportDone(false);
             }}>Remover arquivo</button>}
@@ -365,7 +375,7 @@ export default function FinanceiroPage() {
               {pdfAnalysis.warnings.map((warning) => <p className="small muted" key={warning}>{warning}</p>)}
             </div>
           )}
-          {pdfAnalysis && !pdfTransactions.length && <div className="pdf-result"><strong>Não encontramos lançamentos financeiros neste arquivo.</strong><p className="small muted">Confira se ele contém datas e valores em texto. PDFs digitalizados precisam passar por OCR antes do envio.</p></div>}
+          {pdfAnalysis && !pdfTransactions.length && <div className="pdf-result"><strong>Não encontramos lançamentos detalhados para importar.</strong><p className="small muted">A prévia encontrou valores, mas os resumos não viram lançamentos com data automaticamente, para evitar duplicar totais. PDFs digitalizados precisam passar por OCR antes do envio.</p></div>}
         </section>
       )}
 

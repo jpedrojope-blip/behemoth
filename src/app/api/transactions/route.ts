@@ -12,7 +12,8 @@ import {
   type Period,
 } from "@/lib/finance";
 import { parseBody, transactionCreateSchema } from "@/lib/schemas";
-import { createId, mutate, recordAudit } from "@/lib/store";
+import { createId, recordAudit } from "@/lib/store";
+import { withWorkspaceDatabase } from "@/lib/workspace-store";
 import type { Transaction } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ export async function GET(request: Request) {
   const category = url.searchParams.get("category");
   const kind = url.searchParams.get("kind");
 
-  return mutate((db) => {
+  return withWorkspaceDatabase(request, (db) => {
     const reference = new Date();
     const listed = filterByPeriod(db.transactions, period, reference, "ANY");
     const dreScoped = filterByPeriod(db.transactions, period, reference, "DRE");
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
   if (!parsed.ok) return parsed.response;
   const body = parsed.data;
 
-  return mutate((db) => {
+  return withWorkspaceDatabase(request, (db) => {
     const transaction: Transaction = {
       id: createId("tx"),
       companyId: db.company.id,
@@ -80,6 +81,7 @@ export async function POST(request: Request) {
       costBehavior: body.kind === "EXPENSE" ? body.costBehavior : undefined,
       description: body.description,
       category: body.category || (body.kind === "INCOME" ? "Receita" : "Outros"),
+      accountCode: body.accountCode,
       amount: body.amount,
       source: body.source ?? "manual",
       status: body.status,

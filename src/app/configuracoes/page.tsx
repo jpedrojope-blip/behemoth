@@ -1,10 +1,32 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CircleAlert, CircleCheck, Database, RotateCcw, Save, Trash2 } from "lucide-react";
+import { Camera, CircleAlert, CircleCheck, Database, RotateCcw, Save, Trash2 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, useResource } from "@/lib/client";
+import { initials } from "@/lib/format";
 import type { Automations, Company, Role } from "@/lib/types";
+
+type SessionPayload = { user: { id: string; email: string; name: string; avatarUrl: string | null } | null };
+
+async function optimizeAvatar(file: File) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, 384 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  const context = canvas.getContext("2d");
+  if (!context) {
+    bitmap.close();
+    throw new Error("Não foi possível preparar essa imagem.");
+  }
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.84));
+  if (!blob) throw new Error("Não foi possível otimizar essa imagem.");
+  const extension = blob.type === "image/png" ? "png" : blob.type === "image/jpeg" ? "jpg" : "webp";
+  return new File([blob], `perfil.${extension}`, { type: blob.type });
+}
 
 type Payload = {
   company: Company;
@@ -68,13 +90,34 @@ const INTEGRATION_LABELS: { key: keyof Payload["integrations"]; label: string; h
 
 export default function ConfiguracoesPage() {
   const { data, error } = useResource<Payload>("/api/settings");
+  const { data: session } = useResource<SessionPayload>("/api/auth/session");
   const [form, setForm] = useState<Partial<Company>>({});
   const [saving, setSaving] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [removeAvatar, setRemoveAvatar] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
   const notify = useToast();
+  const savedDisplayName = session?.user?.name;
 
   useEffect(() => {
     if (data?.company) setForm(data.company);
   }, [data?.company]);
+
+  useEffect(() => {
+    if (savedDisplayName) setDisplayName(savedDisplayName);
+  }, [savedDisplayName]);
+
+  useEffect(() => {
+    if (!avatarFile) {
+      setAvatarPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(avatarFile);
+    setAvatarPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [avatarFile]);
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -90,6 +133,39 @@ export default function ConfiguracoesPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function saveProfile(event: React.FormEvent) {
+    event.preventDefault();
+    setSavingProfile(true);
+    try {
+      const body = new FormData();
+      body.append("displayName", displayName.trim());
+      if (avatarFile) body.append("avatar", await optimizeAvatar(avatarFile));
+      else if (removeAvatar) body.append("removeAvatar", "true");
+      await apiFetch("/api/auth/profile", { method: "PATCH", body });
+      setAvatarFile(null);
+      setRemoveAvatar(false);
+      notify("Perfil atualizado.", "success");
+    } catch (cause) {
+      notify(cause instanceof Error ? cause.message : "Erro ao atualizar o perfil.", "error");
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  function chooseAvatar(file: File | undefined) {
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      notify("Escolha uma imagem JPG, PNG ou WebP.", "error");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      notify("A imagem original deve ter até 5 MB.", "error");
+      return;
+    }
+    setAvatarFile(file);
+    setRemoveAvatar(false);
   }
 
   async function toggleAutomation(key: keyof Automations, value: boolean) {
@@ -120,12 +196,82 @@ export default function ConfiguracoesPage() {
       <div className="page-head">
         <div>
           <p className="eyebrow">CONFIGURAÇÕES</p>
-          <h1 className="page-title">Empresa, dados e integrações</h1>
-          <p className="subtitle">Os dados ficam gravados no servidor da aplicação e alimentam todos os módulos.</p>
+          <h1 className="page-title">Conta, workspace e integrações</h1>
+          <p className="subtitle">Personalize sua identidade e ajuste os dados do espaço de trabalho.</p>
         </div>
       </div>
 
       {error && <p className="form-error">{error}</p>}
+
+      <section className="section card account-profile-card">
+        <div className="card-head">
+          <div>
+            <p className="card-kicker">PERFIL DA CONTA</p>
+            <h2>Como você aparece na Behemoth</h2>
+            <p className="small muted">Seu nome e sua foto são pessoais e aparecem junto à sua conta.</p>
+          </div>
+        </div>
+        <form className="account-profile-form" onSubmit={saveProfile}>
+          <div className="profile-photo-column">
+            <div className="profile-photo-preview">
+              {avatarPreview || (!removeAvatar && session?.user?.avatarUrl)
+                ? <img src={avatarPreview ?? session?.user?.avatarUrl ?? ""} alt="Prévia da foto de perfil" />
+                : initials(displayName || session?.user?.email || "Você")}
+            </div>
+            <div className="profile-photo-actions">
+              <label className="btn btn-ghost profile-photo-button" htmlFor="profile-avatar">
+                <Camera size={15} /> {avatarFile ? "Trocar foto" : "Adicionar foto"}
+              </label>
+              <input
+                id="profile-avatar"
+                className="profile-file-input"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                aria-label="Escolher foto de perfil"
+                onChange={(event) => {
+                  chooseAvatar(event.target.files?.[0]);
+                  event.currentTarget.value = "";
+                }}
+              />
+              {(avatarFile || session?.user?.avatarUrl) && <button
+                className="btn btn-ghost"
+                type="button"
+                onClick={() => {
+                  if (avatarFile) {
+                    setAvatarFile(null);
+                    setRemoveAvatar(false);
+                  } else {
+                    setRemoveAvatar(true);
+                  }
+                }}
+              >
+                <Trash2 size={15} /> {avatarFile ? "Desfazer seleção" : "Remover foto"}
+              </button>}
+            </div>
+            <p className="small muted">JPG, PNG ou WebP · até 5 MB. A imagem é reduzida antes do envio.</p>
+          </div>
+          <div className="profile-fields">
+            <div className="field">
+              <label htmlFor="display-name">Como quer ser chamado?</label>
+              <input
+                id="display-name"
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                autoComplete="name"
+                maxLength={60}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="profile-email">E-mail da conta</label>
+              <input id="profile-email" value={session?.user?.email ?? ""} readOnly />
+            </div>
+            <button className="btn btn-primary profile-save-button" type="submit" disabled={savingProfile || !displayName.trim()}>
+              <Save size={15} /> {savingProfile ? "Salvando perfil..." : "Salvar perfil"}
+            </button>
+          </div>
+        </form>
+      </section>
 
       <section className="section split">
         <form className="card" onSubmit={save}>
@@ -165,15 +311,6 @@ export default function ConfiguracoesPage() {
                 <option>Pro</option>
                 <option>Enterprise</option>
               </select>
-            </div>
-            <div className="field">
-              <label htmlFor="ownerName">Seu nome</label>
-              <input
-                id="ownerName"
-                value={form.ownerName ?? ""}
-                onChange={(event) => setForm({ ...form, ownerName: event.target.value })}
-                required
-              />
             </div>
             <div className="field">
               <label htmlFor="ownerRole">Permissão</label>

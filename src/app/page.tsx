@@ -46,6 +46,7 @@ type Overview = {
   openActionItems: number;
   recentTransactions: Transaction[];
 };
+type SessionProfile = { user: { name: string } | null };
 
 const AGENDA_COLORS: Record<CalendarEvent["kind"], string> = {
   MEETING: "blue",
@@ -92,6 +93,7 @@ export default function DashboardPage() {
   const [insightIndex, setInsightIndex] = useState(0);
   const [kpiDetail, setKpiDetail] = useState<{ title: string; body: string } | null>(null);
   const { data, loading, error } = useResource<Overview>(`/api/overview?period=${period}`);
+  const { data: session } = useResource<SessionProfile>("/api/auth/session");
   const notify = useToast();
 
   useEffect(() => {
@@ -135,7 +137,7 @@ export default function DashboardPage() {
         <div>
           <p className="eyebrow">{today.toUpperCase()}</p>
           <h1>
-            {greeting()}, {data?.company.ownerName.split(" ")[0] ?? "..."}. <span>Clareza para decidir.</span>
+            {greeting()}, {(session?.user?.name ?? data?.company.ownerName)?.split(" ")[0] ?? "..."}. <span>Clareza para decidir.</span>
           </h1>
           <p className="subtitle">Financeiro, pessoas, agenda e sinais do negócio em uma única visão.</p>
         </div>

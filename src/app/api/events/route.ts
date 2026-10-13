@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { eventCreateSchema, parseBody } from "@/lib/schemas";
-import { createId, mutate, recordAudit } from "@/lib/store";
+import { createId, recordAudit } from "@/lib/store";
+import { withWorkspaceDatabase } from "@/lib/workspace-store";
 import type { CalendarEvent } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +10,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const month = url.searchParams.get("month"); // formato YYYY-MM
 
-  return mutate((db) => {
+  return withWorkspaceDatabase(request, (db) => {
     const events = month ? db.events.filter((event) => event.date.slice(0, 7) === month) : db.events;
     const today = new Date().toISOString().slice(0, 10);
     return NextResponse.json({
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
   if (!parsed.ok) return parsed.response;
   const body = parsed.data;
 
-  return mutate((db) => {
+  return withWorkspaceDatabase(request, (db) => {
     const event: CalendarEvent = {
       id: createId("event"),
       companyId: db.company.id,

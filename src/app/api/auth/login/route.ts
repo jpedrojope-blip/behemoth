@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { loginSchema, parseBody } from "@/lib/schemas";
 import { authenticateUser, createLocalSessionToken } from "@/lib/auth-store";
-import { signIn, sessionCookieValue, SupabaseUnavailableError, usesLocalDemoAuth } from "@/lib/supabase-auth";
+import { profileFromUser, signIn, sessionCookieValue, SupabaseUnavailableError, usesLocalDemoAuth } from "@/lib/supabase-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -32,9 +32,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "E-mail ou senha inválidos." }, { status: 401 });
   }
 
-  const response = NextResponse.json({
-    user: { id: data.user.id, name: data.user.user_metadata.name ?? data.user.email, email: data.user.email },
-  });
+  const response = NextResponse.json({ user: profileFromUser(data.user) });
   response.cookies.set("behemoth_session", sessionCookieValue(data.session.access_token, data.session.refresh_token), {
     httpOnly: true,
     sameSite: "lax",

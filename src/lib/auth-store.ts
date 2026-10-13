@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-type AuthUser = { id: string; email: string; passwordHash: string; companyId: string; name: string };
+type AuthUser = { id: string; email: string; passwordHash: string; companyId: string; name: string; avatarUrl?: string };
 export type LocalUser = Omit<AuthUser, "passwordHash">;
 
 const dataDir = path.join(process.cwd(), ".data");
@@ -23,7 +23,7 @@ function save(value: AuthUser[]) {
 }
 
 function publicUser(user: AuthUser): LocalUser {
-  return { id: user.id, email: user.email, companyId: user.companyId, name: user.name };
+  return { id: user.id, email: user.email, companyId: user.companyId, name: user.name, avatarUrl: user.avatarUrl };
 }
 
 function equalBuffers(left: Buffer, right: Buffer) {
@@ -81,6 +81,17 @@ export function createUser(email: string, password: string, companyId: string, n
     name,
   };
   allUsers.push(user);
+  save(allUsers);
+  return publicUser(user);
+}
+
+export function updateUserProfile(userId: string, name: string, avatarUrl?: string | null): LocalUser | null {
+  const allUsers = users();
+  const user = allUsers.find((entry) => entry.id === userId);
+  if (!user) return null;
+  user.name = name;
+  if (avatarUrl === null) delete user.avatarUrl;
+  else if (avatarUrl !== undefined) user.avatarUrl = avatarUrl;
   save(allUsers);
   return publicUser(user);
 }
