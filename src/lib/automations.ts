@@ -49,10 +49,17 @@ function expandRecurring(db: Database, reference: Date): string[] {
 
       if (!exists && !dismissed(db, id)) {
         const lastDay = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
+        const shiftedDate = (value?: string) => {
+          if (!value) return undefined;
+          const dateDay = Number(value.slice(8, 10)) || day;
+          return `${key}-${String(Math.min(dateDay, lastDay)).padStart(2, "0")}`;
+        };
         db.transactions.push({
           ...template,
           id,
           date: `${key}-${String(Math.min(day, lastDay)).padStart(2, "0")}`,
+          competenceDate: shiftedDate(template.competenceDate),
+          cashDate: shiftedDate(template.cashDate),
           recurrence: "MONTHLY",
           originId: template.id,
           source: "recorrência",

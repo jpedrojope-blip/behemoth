@@ -6,8 +6,8 @@ import { inflateRawSync } from "node:zlib";
 export const dynamic = "force-dynamic";
 
 type Kind = "INCOME" | "EXPENSE";
-type Group = "RECEITA" | "IMPOSTO" | "CMV" | "RH" | "ADMINISTRATIVA" | "VENDAS" | "FINANCEIRA" | "INVESTIMENTO" | "NAO_OPERACIONAL" | "OUTROS";
-type Line = { name: string; amount: number; group: Group; fixedness: "FIXO" | "VARIAVEL" | "MISTO" | "NAO_CLASSIFICADO"; total: boolean };
+type Group = "RECEITA" | "IMPOSTO" | "CMV" | "RH" | "ADMINISTRATIVA" | "VENDAS" | "FINANCEIRA" | "INVESTIMENTO" | "NAO_OPERACIONAL" | "FINANCIAMENTO" | "OUTROS";
+type Line = { name: string; amount: number; kind: Kind; group: Group; fixedness: "FIXO" | "VARIAVEL" | "MISTO" | "NAO_CLASSIFICADO"; total: boolean };
 const MONEY = /(?:R\$\s*)?-?\d{1,3}(?:\.\d{3})*,\d{2}|(?:R\$\s*)?-?\d+(?:\.\d{2})/g;
 
 function normalized(value: string) { return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
@@ -20,34 +20,48 @@ function groupFor(name: string): Group {
   if (/aluguel|luz|energia|agua|telefone|internet|contador|contabil|assessoria|administrativ/.test(v)) return "ADMINISTRATIVA";
   if (/combustivel|design|maquininha|comissao|marketing|venda|frete/.test(v)) return "VENDAS";
   if (/juros|tarifa bancaria|rendimento|aplicacao financeira|financeir/.test(v)) return "FINANCEIRA";
+  if (/divida|aporte.*soci|dividendo|emprestimo|financiamento/.test(v)) return "FINANCIAMENTO";
   if (/investimento|equipamento|imobilizado|aquisicao/.test(v)) return "INVESTIMENTO";
   if (/nao operacional|extraordinari|indenizacao/.test(v)) return "NAO_OPERACIONAL";
   if (/receita|venda|faturamento|revenda|delivery|recebimento|cliente/.test(v)) return "RECEITA";
   return "OUTROS";
 }
 function fixedness(group: Group): Line["fixedness"] { return group === "CMV" || group === "IMPOSTO" ? "VARIAVEL" : group === "RH" || group === "ADMINISTRATIVA" ? "FIXO" : group === "VENDAS" ? "MISTO" : "NAO_CLASSIFICADO"; }
+function kindFor(name: string, value: number, group: Group): Kind {
+  if (value < 0) return "EXPENSE";
+  if (group === "RECEITA") return "INCOME";
+  if ((group === "FINANCEIRA" || group === "NAO_OPERACIONAL" || group === "FINANCIAMENTO") && /receita|rendimento|aporte|aumento de divida|aumento divida/.test(normalized(name))) return "INCOME";
+  return "EXPENSE";
+}
 function linesFrom(text: string): Line[] {
   return text.split(/\r?\n/).flatMap((raw) => {
     const values = raw.match(MONEY); if (!values?.length) return [];
     const name = raw.replace(MONEY, "").replace(/[|;]+/g, " ").replace(/\s+/g, " ").trim();
     const value = amount(values.at(-1) ?? ""); if (!name || !Number.isFinite(value) || value === 0) return [];
     const group = groupFor(name);
-    return [{ name, amount: Math.abs(value), group, fixedness: fixedness(group), total: /total|lucro|resultado|margem|receita liquida|fluxo de caixa/i.test(normalized(name)) }];
+    return [{ name, amount: Math.abs(value), kind: kindFor(name, value, group), group, fixedness: fixedness(group), total: /total|lucro|resultado|margem|receita liquida|fluxo de caixa/i.test(normalized(name)) }];
   }).slice(0, 500);
 }
-function sum(lines: Line[], group: Group) { return lines.filter((line) => line.group === group && !line.total).reduce((total, line) => total + line.amount, 0); }
+function sum(lines: Line[], group: Group, kind?: Kind) { return lines.filter((line) => line.group === group && !line.total && (!kind || line.kind === kind)).reduce((total, line) => total + line.amount, 0); }
 function named(lines: Line[], matcher: RegExp) { return lines.find((line) => matcher.test(normalized(line.name)))?.amount; }
 function analysis(lines: Line[]) {
-  const grossRevenue = named(lines, /receita bruta|faturamento bruto/) ?? sum(lines, "RECEITA");
-  const taxes = named(lines, /impostos? sobre a receita|deduc.*receita/) ?? sum(lines, "IMPOSTO");
+  const grossRevenue = named(lines, /receita bruta|faturamento bruto/) ?? sum(lines, "RECEITA", "INCOME");
+  const taxes = named(lines, /impostos? sobre a receita|deduc.*receita/) ?? sum(lines, "IMPOSTO", "EXPENSE");
   const netRevenue = named(lines, /receita liquida/) ?? grossRevenue - taxes;
-  const cmv = named(lines, /\bcmv\b|custo.*mercadoria|custos? variaveis/) ?? sum(lines, "CMV");
+  const cmv = named(lines, /\bcmv\b|custo.*mercadoria|custos? variaveis/) ?? sum(lines, "CMV", "EXPENSE");
   const grossProfit = named(lines, /lucro bruto/) ?? netRevenue - cmv;
-  const operatingExpenses = sum(lines, "RH") + sum(lines, "ADMINISTRATIVA") + sum(lines, "VENDAS");
-  const financialResult = sum(lines, "FINANCEIRA"), nonOperatingResult = sum(lines, "NAO_OPERACIONAL");
-  const netProfit = named(lines, /lucro liquido|resultado liquido/) ?? grossProfit - operatingExpenses - financialResult - nonOperatingResult;
-  const operationalCashFlow = grossRevenue - taxes - cmv - operatingExpenses - financialResult;
-  return { detected: lines.length > 0, planOfAccounts: lines.slice(0, 80), summary: { grossRevenue, taxes, netRevenue, cmv, grossProfit, operatingExpenses, financialResult, nonOperatingResult, netProfit, grossMargin: grossRevenue ? grossProfit / grossRevenue * 100 : null, netMargin: grossRevenue ? netProfit / grossRevenue * 100 : null, cashIn: grossRevenue, cashOut: taxes + cmv + operatingExpenses + financialResult + nonOperatingResult, operationalCashFlow, freeCashFlow: operationalCashFlow - sum(lines, "INVESTIMENTO") - nonOperatingResult, projectedFixedOutflow: sum(lines, "RH") + sum(lines, "ADMINISTRATIVA") }, verticalAnalysis: lines.filter((line) => !line.total).slice(0, 30).map((line) => ({ ...line, percentOfRevenue: grossRevenue ? line.amount / grossRevenue * 100 : null })), warnings: ["DRE usa competência e DFC usa caixa. Confirme a classificação antes de importar.", "A projeção considera somente as despesas fixas identificadas; receitas futuras não são inventadas."] };
+  const operatingExpenses = sum(lines, "RH", "EXPENSE") + sum(lines, "ADMINISTRATIVA", "EXPENSE") + sum(lines, "VENDAS", "EXPENSE") + sum(lines, "OUTROS", "EXPENSE");
+  const financialIncome = sum(lines, "FINANCEIRA", "INCOME"), financialExpense = sum(lines, "FINANCEIRA", "EXPENSE");
+  const nonOperatingIncome = sum(lines, "NAO_OPERACIONAL", "INCOME"), nonOperatingExpense = sum(lines, "NAO_OPERACIONAL", "EXPENSE");
+  const financialResult = financialIncome - financialExpense, nonOperatingResult = nonOperatingIncome - nonOperatingExpense;
+  const netProfit = named(lines, /lucro liquido|resultado liquido/) ?? grossProfit - operatingExpenses + financialResult + nonOperatingResult;
+  const operationalCashFlow = grossRevenue - taxes - cmv - operatingExpenses + financialResult;
+  const investments = sum(lines, "INVESTIMENTO", "EXPENSE"), financingIn = sum(lines, "FINANCIAMENTO", "INCOME"), financingOut = sum(lines, "FINANCIAMENTO", "EXPENSE");
+  const freeCashFlow = operationalCashFlow + nonOperatingResult - investments + financingIn - financingOut;
+  const cashIn = grossRevenue + financialIncome + nonOperatingIncome + financingIn;
+  const cashOut = taxes + cmv + operatingExpenses + financialExpense + nonOperatingExpense + investments + financingOut;
+  const projectedFixedOutflow = lines.filter((line) => line.kind === "EXPENSE" && line.fixedness === "FIXO" && !line.total).reduce((total, line) => total + line.amount, 0);
+  return { detected: lines.length > 0, planOfAccounts: lines.slice(0, 80), summary: { grossRevenue, taxes, netRevenue, cmv, grossProfit, operatingExpenses, financialIncome, financialExpense, financialResult, nonOperatingIncome, nonOperatingExpense, nonOperatingResult, investments, financingIn, financingOut, netProfit, grossMargin: grossRevenue ? grossProfit / grossRevenue * 100 : null, netMargin: grossRevenue ? netProfit / grossRevenue * 100 : null, cashIn, cashOut, operationalCashFlow, freeCashFlow, projectedFixedOutflow }, verticalAnalysis: lines.filter((line) => !line.total).slice(0, 30).map((line) => ({ ...line, percentOfRevenue: grossRevenue ? line.amount / grossRevenue * 100 : null })), warnings: ["DRE usa competência e DFC usa caixa. Confirme a classificação antes de importar.", "A projeção considera somente as despesas fixas identificadas; receitas futuras não são inventadas."] };
 }
 function transactions(text: string) {
   const datePattern = /(\d{2}[\/-]\d{2}[\/-]\d{4}|\d{4}-\d{2}-\d{2})/;
@@ -55,7 +69,7 @@ function transactions(text: string) {
     const date = raw.match(datePattern), values = raw.match(MONEY); if (!date || !values?.length) return [];
     const parts = date[1].includes("-") ? date[1].split("-") : date[1].split(/[\/-]/).reverse(); const value = amount(values.at(-1) ?? ""); if (!Number.isFinite(value) || value === 0) return [];
     const description = raw.replace(date[0], "").replace(MONEY, "").replace(/\s+/g, " ").trim() || "Lançamento importado";
-    const group = groupFor(description), kind: Kind = value < 0 || group !== "RECEITA" ? "EXPENSE" : "INCOME";
+    const group = groupFor(description), kind = kindFor(description, value, group);
     return [{ date: `${parts[0]}-${parts[1]}-${parts[2]}`, description, amount: Math.abs(value), kind, category: group === "RECEITA" ? "Receita" : group }];
   }).slice(0, 200);
 }

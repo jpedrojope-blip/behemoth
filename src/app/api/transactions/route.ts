@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import {
   calculateFinancials,
+  calculateCashFlow,
+  calculateCashPosition,
   categoryBreakdown,
   filterByPeriod,
   isPeriod,
@@ -23,19 +25,30 @@ export async function GET(request: Request) {
   const kind = url.searchParams.get("kind");
 
   return mutate((db) => {
-    const scoped = filterByPeriod(db.transactions, period);
-    const filtered = scoped.filter(
+    const reference = new Date();
+    const listed = filterByPeriod(db.transactions, period, reference, "ANY");
+    const dreScoped = filterByPeriod(db.transactions, period, reference, "DRE");
+    const cashScoped = filterByPeriod(db.transactions, period, reference, "DFC");
+    const filtered = listed.filter(
       (transaction) =>
         (!category || category === "todas" || transaction.category === category) &&
         (!kind || kind === "todos" || transaction.kind === kind),
     );
-    const current = calculateFinancials(scoped);
-    const previous = calculateFinancials(previousPeriod(db.transactions, period));
+    const current = calculateFinancials(dreScoped);
+    const previous = calculateFinancials(previousPeriod(db.transactions, period, reference, "DRE"));
 
     return NextResponse.json({
       period,
       transactions: [...filtered].sort((a, b) => b.date.localeCompare(a.date)),
       financials: current,
+      cashFlow: calculateCashFlow(cashScoped),
+      cashPosition: calculateCashPosition(
+        db.transactions,
+        period,
+        db.company.cashOpeningBalance,
+        db.company.cashOpeningDate,
+        reference,
+      ),
       comparison: {
         revenue: percentChange(current.grossRevenue, previous.grossRevenue),
         costs: percentChange(current.costs, previous.costs),
@@ -43,9 +56,9 @@ export async function GET(request: Request) {
       },
       categories: [...new Set(db.transactions.map((transaction) => transaction.category))].sort(),
       series: monthlySeries(db.transactions, 8),
-      incomeByCategory: categoryBreakdown(scoped, "INCOME"),
-      expensesByCategory: categoryBreakdown(scoped, "EXPENSE"),
-      automated: scoped.filter((transaction) => transaction.auto).length,
+      incomeByCategory: categoryBreakdown(dreScoped, "INCOME"),
+      expensesByCategory: categoryBreakdown(dreScoped, "EXPENSE"),
+      automated: listed.filter((transaction) => transaction.auto).length,
     });
   });
 }
@@ -60,7 +73,11 @@ export async function POST(request: Request) {
       id: createId("tx"),
       companyId: db.company.id,
       kind: body.kind,
-      date: body.date ?? new Date().toISOString().slice(0, 10),
+      date: body.date ?? body.competenceDate ?? body.cashDate ?? new Date().toISOString().slice(0, 10),
+      competenceDate: body.competenceDate ?? body.date,
+      cashDate: body.cashDate ?? body.date,
+      financialReport: body.financialReport,
+      costBehavior: body.kind === "EXPENSE" ? body.costBehavior : undefined,
       description: body.description,
       category: body.category || (body.kind === "INCOME" ? "Receita" : "Outros"),
       amount: body.amount,

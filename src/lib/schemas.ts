@@ -11,6 +11,10 @@ export const transactionCreateSchema = z.object({
   kind: z.enum(["INCOME", "EXPENSE"]),
   category: z.string().trim().optional(),
   date: isoDate.optional(),
+  competenceDate: isoDate.optional(),
+  cashDate: isoDate.optional(),
+  financialReport: z.enum(["BOTH", "DRE", "DFC"]).default("BOTH"),
+  costBehavior: z.enum(["AUTO", "FIXED", "VARIABLE"]).optional(),
   status: z.enum(["CONFIRMED", "PENDING"]).default("CONFIRMED"),
   recurrence: z.enum(["NONE", "MONTHLY"]).default("NONE"),
   source: z.string().trim().optional(),
@@ -22,6 +26,10 @@ export const transactionUpdateSchema = z.object({
   kind: z.enum(["INCOME", "EXPENSE"]).optional(),
   category: z.string().trim().min(1).optional(),
   date: isoDate.optional(),
+  competenceDate: isoDate.optional(),
+  cashDate: isoDate.optional(),
+  financialReport: z.enum(["BOTH", "DRE", "DFC"]).optional(),
+  costBehavior: z.enum(["AUTO", "FIXED", "VARIABLE"]).optional(),
   status: z.enum(["CONFIRMED", "PENDING"]).optional(),
   recurrence: z.enum(["NONE", "MONTHLY"]).optional(),
 });
@@ -92,6 +100,8 @@ export const settingsUpdateSchema = z.object({
   plan: z.string().trim().min(1).optional(),
   ownerName: z.string().trim().min(1).optional(),
   ownerRole: z.enum(["ADMIN", "MANAGER", "MEMBER"]).optional(),
+  cashOpeningBalance: z.coerce.number().optional(),
+  cashOpeningDate: isoDate.optional(),
   automations: z
     .object({
       recurringTransactions: z.boolean(),

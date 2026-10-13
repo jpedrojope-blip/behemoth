@@ -2,6 +2,8 @@ export type Role = "ADMIN" | "MANAGER" | "MEMBER";
 export type TransactionKind = "INCOME" | "EXPENSE";
 export type TransactionStatus = "CONFIRMED" | "PENDING";
 export type Recurrence = "NONE" | "MONTHLY";
+export type FinancialReport = "BOTH" | "DRE" | "DFC";
+export type CostBehavior = "AUTO" | "FIXED" | "VARIABLE";
 
 export type Company = {
   id: string;
@@ -10,6 +12,9 @@ export type Company = {
   plan: string;
   ownerName: string;
   ownerRole: Role;
+  /** Saldo consolidado informado no início de cashOpeningDate. */
+  cashOpeningBalance?: number;
+  cashOpeningDate?: string;
 };
 
 /** Regras que o sistema executa sozinho a cada leitura ou escrita. */
@@ -37,6 +42,14 @@ export type Transaction = {
   source?: string;
   status: TransactionStatus;
   recurrence?: Recurrence;
+  /** Relatórios em que o lançamento entra. Ausente = ambos, para dados antigos. */
+  financialReport?: FinancialReport;
+  /** Data de competência da DRE; ausente = date. */
+  competenceDate?: string;
+  /** Data de caixa do fluxo de caixa; ausente = date. */
+  cashDate?: string;
+  /** Classificação usada pelo cálculo da margem de contribuição. */
+  costBehavior?: CostBehavior;
   /** Id do lançamento que originou esta cópia recorrente. */
   originId?: string;
   /** Marca lançamentos criados por automação — não editáveis à mão. */

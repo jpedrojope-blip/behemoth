@@ -80,7 +80,10 @@ export default function ConfiguracoesPage() {
     event.preventDefault();
     setSaving(true);
     try {
-      await apiFetch("/api/settings", { method: "PATCH", body: JSON.stringify(form) });
+      await apiFetch("/api/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ ...form, cashOpeningDate: form.cashOpeningDate || undefined }),
+      });
       notify("Configurações salvas.", "success");
     } catch (cause) {
       notify(cause instanceof Error ? cause.message : "Erro ao salvar.", "error");
@@ -184,6 +187,26 @@ export default function ConfiguracoesPage() {
                 <option value="MEMBER">Membro</option>
               </select>
             </div>
+            <div className="field">
+              <label htmlFor="cashOpeningBalance">Saldo inicial de caixa (R$)</label>
+              <input
+                id="cashOpeningBalance"
+                type="number"
+                step="0.01"
+                value={form.cashOpeningBalance ?? ""}
+                onChange={(event) => setForm({ ...form, cashOpeningBalance: event.target.value === "" ? undefined : Number(event.target.value) })}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="cashOpeningDate">Data desse saldo</label>
+              <input
+                id="cashOpeningDate"
+                type="date"
+                value={form.cashOpeningDate ?? ""}
+                onChange={(event) => setForm({ ...form, cashOpeningDate: event.target.value })}
+              />
+            </div>
+            <p className="small muted">Informe o saldo consolidado no início da data escolhida para calcular o saldo final do fluxo de caixa.</p>
             <button className="btn btn-primary" type="submit" disabled={saving}>
               <Save size={15} /> {saving ? "Salvando..." : "Salvar"}
             </button>

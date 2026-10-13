@@ -23,6 +23,8 @@ import { useToast } from "@/components/ui/toast";
 import { apiFetch, useResource } from "@/lib/client";
 import {
   PERIOD_LABELS,
+  type CashPosition,
+  type CashFlowFinancials,
   type CategoryTotal,
   type Financials,
   type MonthlyPoint,
@@ -35,6 +37,8 @@ type Payload = {
   period: Period;
   transactions: Transaction[];
   financials: Financials;
+  cashFlow: CashFlowFinancials;
+  cashPosition: CashPosition | null;
   comparison: { revenue: number; costs: number; profit: number };
   categories: string[];
   series: MonthlyPoint[];
@@ -43,7 +47,7 @@ type Payload = {
   automated: number;
 };
 
-type PdfAnalysis = { summary: { grossRevenue: number; taxes: number; netRevenue: number; cmv: number; grossProfit: number; operatingExpenses: number; netProfit: number; grossMargin: number | null; netMargin: number | null; operationalCashFlow: number; freeCashFlow: number; projectedFixedOutflow: number }; warnings: string[] };
+type PdfAnalysis = { summary: { grossRevenue: number; taxes: number; netRevenue: number; cmv: number; grossProfit: number; operatingExpenses: number; financialIncome: number; financialExpense: number; nonOperatingIncome: number; nonOperatingExpense: number; investments: number; financingIn: number; financingOut: number; netProfit: number; grossMargin: number | null; netMargin: number | null; operationalCashFlow: number; freeCashFlow: number; projectedFixedOutflow: number }; warnings: string[] };
 
 function summaryTransactions(analysis: PdfAnalysis) {
   const now = new Date();
@@ -53,6 +57,13 @@ function summaryTransactions(analysis: PdfAnalysis) {
     ["Impostos sobre receita importados", analysis.summary.taxes, "EXPENSE", "IMPOSTO"],
     ["CMV e custos importados", analysis.summary.cmv, "EXPENSE", "CMV"],
     ["Despesas operacionais importadas", analysis.summary.operatingExpenses, "EXPENSE", "Despesas operacionais"],
+    ["Receita financeira importada", analysis.summary.financialIncome, "INCOME", "Financeira"],
+    ["Despesa financeira importada", analysis.summary.financialExpense, "EXPENSE", "Financeira"],
+    ["Receita não operacional importada", analysis.summary.nonOperatingIncome, "INCOME", "Não operacional"],
+    ["Despesa não operacional importada", analysis.summary.nonOperatingExpense, "EXPENSE", "Não operacional"],
+    ["Investimentos importados", analysis.summary.investments, "EXPENSE", "Investimento"],
+    ["Aportes e novas dívidas importados", analysis.summary.financingIn, "INCOME", "Financiamento"],
+    ["Pagamentos de dívidas e dividendos importados", analysis.summary.financingOut, "EXPENSE", "Financiamento"],
   ];
   return values.filter(([, value]) => value > 0).map(([description, amount, kind, category]) => ({ date, description, amount, kind, category }));
 }
@@ -63,6 +74,9 @@ const EMPTY_FORM = {
   kind: "INCOME" as Transaction["kind"],
   category: "",
   date: new Date().toISOString().slice(0, 10),
+  cashDate: "",
+  financialReport: "BOTH" as NonNullable<Transaction["financialReport"]>,
+  costBehavior: "AUTO" as NonNullable<Transaction["costBehavior"]>,
   status: "CONFIRMED" as Transaction["status"],
   recurrence: "NONE" as NonNullable<Transaction["recurrence"]>,
 };
@@ -72,6 +86,10 @@ function expenseHealthColor(amount: number, revenue: number) {
   if (ratio > 0.4) return "#ef4444";
   if (ratio > 0.2) return "#f5a524";
   return "#22c55e";
+}
+
+function signedBrl(value: number) {
+  return `${value < 0 ? "−" : "+"} ${brlExact(Math.abs(value))}`;
 }
 
 export default function FinanceiroPage() {
@@ -102,7 +120,10 @@ export default function FinanceiroPage() {
     event.preventDefault();
     setSaving(true);
     try {
-      await apiFetch("/api/transactions", { method: "POST", body: JSON.stringify(form) });
+      await apiFetch("/api/transactions", {
+        method: "POST",
+        body: JSON.stringify({ ...form, cashDate: form.cashDate || undefined }),
+      });
       notify("Lançamento salvo.", "success");
       setForm({ ...EMPTY_FORM, kind: form.kind });
       setFormOpen(false);
@@ -185,6 +206,7 @@ export default function FinanceiroPage() {
   }
 
   const financials = data?.financials;
+  const cashFlow = data?.cashFlow;
   const revenue = financials?.grossRevenue ?? 0;
   const costs = financials?.costs ?? 0;
   const margin = (financials?.netMargin ?? 0) * 100;
@@ -384,7 +406,7 @@ export default function FinanceiroPage() {
           <div className="card-head">
             <div>
               <p className="card-kicker">DETALHAMENTO FINANCEIRO</p>
-              <h2>Demonstrativo do período</h2>
+              <h2>DRE do período</h2>
             </div>
           </div>
           <div className="table-wrap" style={{ marginTop: 16 }}>
@@ -422,7 +444,12 @@ export default function FinanceiroPage() {
                   <td className="num"><strong>{brlExact(financials?.grossProfit ?? 0)}</strong></td>
                   <td className="num"><strong>{percent(((financials?.grossMargin ?? 0) * 100))}</strong></td>
                 </tr>
-                {(data?.expensesByCategory ?? []).filter((entry) => !/imposto|tribut|simples|cmv|custo|fornecedor|embalag/i.test(entry.category)).map((entry) => (
+                <tr>
+                  <td><strong>(−) Despesas operacionais</strong></td>
+                  <td className="num" style={{ color: "#ff8f7a" }}>−{brlExact(financials?.operationalExpenses ?? 0)}</td>
+                  <td className="num">{revenue ? percent(((financials?.operationalExpenses ?? 0) / revenue) * 100) : "—"}</td>
+                </tr>
+                {(data?.expensesByCategory ?? []).filter((entry) => !/imposto|tribut|simples|cmv|custo|fornecedor|embalag|financeir|juros|nao operacional|extraordinari|investimento|divida|dividendo|aporte/i.test(entry.category)).map((entry) => (
                   <tr key={entry.category}>
                     <td style={{ paddingLeft: 26, color: "var(--muted)" }}>(−) {entry.category}</td>
                     <td className="num" style={{ color: "#ff8f7a" }}>
@@ -431,6 +458,16 @@ export default function FinanceiroPage() {
                     <td className="num">{revenue ? percent((entry.amount / revenue) * 100) : "—"}</td>
                   </tr>
                 ))}
+                <tr>
+                  <td>Resultado financeiro</td>
+                  <td className="num" style={{ color: (financials?.financialResult ?? 0) < 0 ? "#ff8f7a" : "#4ade80" }}>{signedBrl(financials?.financialResult ?? 0)}</td>
+                  <td className="num">{revenue ? percent(((financials?.financialResult ?? 0) / revenue) * 100) : "—"}</td>
+                </tr>
+                <tr>
+                  <td>Resultado não operacional</td>
+                  <td className="num" style={{ color: (financials?.nonOperatingResult ?? 0) < 0 ? "#ff8f7a" : "#4ade80" }}>{signedBrl(financials?.nonOperatingResult ?? 0)}</td>
+                  <td className="num">{revenue ? percent(((financials?.nonOperatingResult ?? 0) / revenue) * 100) : "—"}</td>
+                </tr>
                 <tr>
                   <td>
                     <strong>= Lucro líquido</strong>
@@ -474,6 +511,46 @@ export default function FinanceiroPage() {
             {data?.automated ?? 0} lançamento(s) do período vieram de automações — custo da equipe, pagamentos
             concluídos e recorrências.
           </p>
+        </div>
+      </section>
+
+      <section className="section split">
+        <div className="card">
+          <div className="card-head">
+            <div>
+              <p className="card-kicker">DFC · REGIME DE CAIXA</p>
+              <h2>Fluxo de caixa do período</h2>
+            </div>
+          </div>
+          <div className="finance-summary-list">
+            <div className="finance-summary-row"><span>Fluxo operacional</span><strong>{signedBrl(cashFlow?.operational ?? 0)}</strong></div>
+            <div className="finance-summary-row"><span>Fluxo não operacional</span><strong>{signedBrl(cashFlow?.nonOperating ?? 0)}</strong></div>
+            <div className="finance-summary-row"><span>Investimentos</span><strong>{signedBrl(cashFlow?.investments ?? 0)}</strong></div>
+            <div className="finance-summary-row"><span>Financiamentos e aportes</span><strong>{signedBrl(cashFlow?.financing ?? 0)}</strong></div>
+            <div className="finance-summary-row total"><span>Fluxo de caixa livre</span><strong>{signedBrl(cashFlow?.freeCashFlow ?? 0)}</strong></div>
+            {data?.cashPosition && <>
+              <div className="finance-summary-row"><span>Saldo no início do período</span><strong>{brlExact(data.cashPosition.openingBalance)}</strong></div>
+              <div className="finance-summary-row target"><span>Saldo final calculado</span><strong>{brlExact(data.cashPosition.closingBalance)}</strong></div>
+            </>}
+          </div>
+          <p className="small muted finance-note">O fluxo considera lançamentos confirmados marcados para a DFC e usa a data de caixa quando informada. {data?.cashPosition ? "O saldo final parte do saldo inicial cadastrado em Configurações." : "Cadastre o saldo inicial e a data em Configurações para calcular o saldo final."}</p>
+        </div>
+
+        <div className="card">
+          <div className="card-head">
+            <div>
+              <p className="card-kicker">MARGEM DE CONTRIBUIÇÃO</p>
+              <h2>Ponto de equilíbrio e meta</h2>
+            </div>
+          </div>
+          <div className="finance-summary-list">
+            <div className="finance-summary-row"><span>Gastos variáveis</span><strong>{brlExact(financials?.variableExpenses ?? 0)}</strong></div>
+            <div className="finance-summary-row"><span>Gastos fixos</span><strong>{brlExact(financials?.fixedExpenses ?? 0)}</strong></div>
+            <div className="finance-summary-row"><span>Margem de contribuição</span><strong>{brlExact(financials?.contributionMargin ?? 0)}{financials?.contributionMarginRate !== null && financials?.contributionMarginRate !== undefined ? ` · ${percent(financials.contributionMarginRate * 100)}` : ""}</strong></div>
+            <div className="finance-summary-row total"><span>Ponto de equilíbrio</span><strong>{financials?.breakEvenRevenue === null || financials?.breakEvenRevenue === undefined ? "—" : brlExact(financials.breakEvenRevenue)}</strong></div>
+            <div className="finance-summary-row target"><span>Vendas para lucro de {percent((financials?.targetProfitMargin ?? 0.1) * 100)}</span><strong>{financials?.targetRevenue === null || financials?.targetRevenue === undefined ? "—" : brlExact(financials.targetRevenue)}</strong></div>
+          </div>
+          <p className="small muted finance-note">Impostos e custos diretos entram como variáveis pela categoria. Confira o tipo fixo/variável nos lançamentos para ajustar o cálculo.</p>
         </div>
       </section>
 
@@ -549,13 +626,46 @@ export default function FinanceiroPage() {
                 </datalist>
               </div>
               <div className="field">
-                <label htmlFor="date">Data</label>
+                <label htmlFor="date">{form.financialReport === "DFC" ? "Data do caixa" : "Data de competência"}</label>
                 <input
                   id="date"
                   type="date"
                   value={form.date}
                   onChange={(event) => setForm({ ...form, date: event.target.value })}
                 />
+              </div>
+              <div className="field" hidden={form.financialReport !== "BOTH"}>
+                <label htmlFor="cashDate">Data no caixa</label>
+                <input
+                  id="cashDate"
+                  type="date"
+                  value={form.cashDate}
+                  onChange={(event) => setForm({ ...form, cashDate: event.target.value })}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="financialReport">Entra em</label>
+                <select
+                  id="financialReport"
+                  value={form.financialReport}
+                  onChange={(event) => setForm({ ...form, financialReport: event.target.value as NonNullable<Transaction["financialReport"]> })}
+                >
+                  <option value="BOTH">DRE e fluxo de caixa</option>
+                  <option value="DRE">Somente DRE</option>
+                  <option value="DFC">Somente fluxo de caixa</option>
+                </select>
+              </div>
+              <div className="field" hidden={form.kind !== "EXPENSE"}>
+                <label htmlFor="costBehavior">Tipo de gasto</label>
+                <select
+                  id="costBehavior"
+                  value={form.costBehavior}
+                  onChange={(event) => setForm({ ...form, costBehavior: event.target.value as NonNullable<Transaction["costBehavior"]> })}
+                >
+                  <option value="AUTO">Automático pela categoria</option>
+                  <option value="FIXED">Gasto fixo</option>
+                  <option value="VARIABLE">Gasto variável</option>
+                </select>
               </div>
               <div className="field">
                 <label htmlFor="status">Situação</label>
@@ -619,8 +729,19 @@ export default function FinanceiroPage() {
                       )}
                     </div>
                   </td>
-                  <td>{transaction.category}</td>
-                  <td>{shortDate(transaction.date)}</td>
+                  <td>
+                    {transaction.category}
+                    <div className="small muted" style={{ marginTop: 4 }}>
+                      {transaction.financialReport === "DRE" ? "Somente DRE" : transaction.financialReport === "DFC" ? "Somente caixa" : "DRE e caixa"}
+                      {transaction.kind === "EXPENSE" && ` · ${transaction.costBehavior === "FIXED" ? "Fixo" : transaction.costBehavior === "VARIABLE" ? "Variável" : "Tipo automático"}`}
+                    </div>
+                  </td>
+                  <td>
+                    {shortDate(transaction.financialReport === "DFC" ? transaction.cashDate ?? transaction.date : transaction.competenceDate ?? transaction.date)}
+                    {transaction.financialReport !== "DFC" && transaction.cashDate && transaction.cashDate !== (transaction.competenceDate ?? transaction.date) && (
+                      <div className="small muted" style={{ marginTop: 4 }}>Caixa: {shortDate(transaction.cashDate)}</div>
+                    )}
+                  </td>
                   <td>
                     <button
                       className={`pill ${transaction.status === "CONFIRMED" ? "green" : "amber"}`}
