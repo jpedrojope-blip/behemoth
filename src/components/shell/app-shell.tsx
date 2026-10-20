@@ -83,24 +83,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const storageKey = "behemoth-theme";
-    const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
-    const applyTheme = (nextTheme: ColorTheme) => {
-      document.documentElement.dataset.theme = nextTheme;
-      setTheme(nextTheme);
-    };
-    const getSavedTheme = (): ColorTheme | null => {
-      const savedTheme = window.localStorage.getItem(storageKey);
-      return savedTheme === "light" || savedTheme === "dark" ? savedTheme : null;
-    };
-    const initialTheme = getSavedTheme() ?? (systemTheme.matches ? "dark" : "light");
-
-    applyTheme(initialTheme);
-
-    const syncSystemTheme = (event: MediaQueryListEvent) => {
-      if (getSavedTheme() === null) applyTheme(event.matches ? "dark" : "light");
-    };
-    systemTheme.addEventListener("change", syncSystemTheme);
-    return () => systemTheme.removeEventListener("change", syncSystemTheme);
+    const savedTheme = window.localStorage.getItem(storageKey);
+    const initialTheme: ColorTheme = savedTheme === "dark" ? "dark" : "light";
+    document.documentElement.dataset.theme = initialTheme;
+    setTheme(initialTheme);
   }, []);
 
   useEffect(() => {
