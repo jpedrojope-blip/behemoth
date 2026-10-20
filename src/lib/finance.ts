@@ -127,6 +127,32 @@ function normalizeCategory(category: string) {
   return category.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
+/**
+ * Corrige uma classificação antiga feita pelo importador de extratos. Alguns
+ * relatórios usam "VD-001" como código de venda, que antes caía em OUTROS e
+ * era tratado como despesa. A regra é restrita a arquivos importados e ao
+ * código de venda para não alterar lançamentos cadastrados pela pessoa.
+ */
+export function repairImportedSaleTransactions(transactions: Transaction[]) {
+  let repaired = 0;
+
+  for (const transaction of transactions) {
+    const source = normalizeCategory(transaction.source ?? "");
+    const isImportedFile = source === "pdf" || source === "excel" || source === "word" || source === "import";
+    const isUnclassifiedExpense = transaction.kind === "EXPENSE" && normalizeCategory(transaction.category) === "outros";
+    const isSaleCode = /\bvd(?:[-\s]?\d+)?\b/.test(normalizeCategory(transaction.description));
+
+    if (!isImportedFile || !isUnclassifiedExpense || !isSaleCode) continue;
+
+    transaction.kind = "INCOME";
+    transaction.category = "Receita";
+    transaction.costBehavior = undefined;
+    repaired += 1;
+  }
+
+  return repaired;
+}
+
 function categoryMatches(category: string, pattern: RegExp) {
   return pattern.test(normalizeCategory(category));
 }
@@ -339,6 +365,47 @@ export function percentChange(current: number, previous: number) {
 }
 
 export type MonthlyPoint = { label: string; month: string; income: number; expense: number; profit: number; count: number };
+
+export type FinancialTimelinePoint = {
+  label: string;
+  date: string;
+  income: number;
+  expense: number;
+  profit: number;
+  count: number;
+};
+
+/**
+ * Agrupa os lançamentos confirmados pela data de competência. Essa é a série
+ * usada para enxergar a oscilação real dentro do período, em vez de preencher
+ * meses sem movimento com valores zero.
+ */
+export function dailyFinancialSeries(transactions: Transaction[]): FinancialTimelinePoint[] {
+  const groups = new Map<string, Transaction[]>();
+
+  for (const transaction of transactions) {
+    if (transaction.status !== "CONFIRMED" || !reportIncludes(transaction, "DRE")) continue;
+    const date = transaction.competenceDate ?? transaction.date;
+    const current = groups.get(date) ?? [];
+    current.push(transaction);
+    groups.set(date, current);
+  }
+
+  return [...groups.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([date, entries]) => {
+      const financials = calculateFinancials(entries);
+      const parsed = parseDate(date);
+      return {
+        label: parsed.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(" de ", " ").replace(".", ""),
+        date,
+        income: financials.grossRevenue,
+        expense: financials.costs,
+        profit: financials.netProfit,
+        count: entries.length,
+      };
+    });
+}
 
 export function monthlySeries(transactions: Transaction[], months = 8, reference = new Date()): MonthlyPoint[] {
   const points: MonthlyPoint[] = [];

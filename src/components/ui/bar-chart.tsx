@@ -122,6 +122,7 @@ export function BarChart({ labels, series, height = 230, highlightLast = false }
                 return (
                   <rect
                     key={entry.label}
+                    className="chart-bar"
                     x={start + seriesIndex * (geometry.barWidth + 3)}
                     y={top}
                     width={geometry.barWidth}
@@ -129,6 +130,7 @@ export function BarChart({ labels, series, height = 230, highlightLast = false }
                     rx={Math.min(4, geometry.barWidth / 2)}
                     fill={isLast && seriesIndex === 0 ? "#93c5fd" : entry.color}
                     opacity={hover === null || hover === index ? 1 : 0.5}
+                    style={{ animationDelay: `${Math.min(index * 25 + seriesIndex * 18, 340)}ms` }}
                   />
                 );
               })}

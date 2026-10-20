@@ -40,11 +40,11 @@ export const teamCreateSchema = z.object({
   name: z.string().trim().min(1, "Informe o nome."),
   role: z.string().trim().min(1, "Informe a função."),
   type: z.enum(["HUMAN", "AI"]).default("HUMAN"),
-  performance: percentValue.default(0),
-  target: percentValue.default(100),
+  email: z.union([z.string().trim().email("Informe um e-mail válido."), z.literal("")]).default(""),
+  phone: z.string().trim().max(30).default(""),
+  department: z.string().trim().max(80).default(""),
+  location: z.string().trim().max(120).default(""),
   monthlyCost: z.coerce.number().min(0).default(0),
-  generatedValue: z.coerce.number().min(0).default(0),
-  roi: z.coerce.number().min(0).default(0),
   status: z.enum(["ACTIVE", "REVIEW"]).default("ACTIVE"),
 });
 

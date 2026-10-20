@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { ArrowRight, LockKeyhole } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState("");
@@ -33,7 +35,7 @@ export default function LoginPage() {
         setError(payload.error ?? "Não foi possível entrar.");
         return;
       }
-      window.location.href = "/";
+      router.replace("/");
     } catch {
       setError("Não foi possível conectar ao servidor local. Verifique se ele está em execução e tente novamente.");
     } finally {

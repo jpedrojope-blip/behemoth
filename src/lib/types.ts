@@ -64,16 +64,73 @@ export type TeamMember = {
   id: string;
   companyId: string;
   name: string;
+  email: string;
+  phone: string;
+  department: string;
+  location: string;
   type: "HUMAN" | "AI";
   role: string;
-  performance: number;
-  target: number;
+  /** Custo mensal informado para a conciliação automática de despesas. */
   monthlyCost: number;
-  /** Receita ou valor economizado atribuído ao integrante no período. */
-  generatedValue: number;
-  roi: number;
   status: "ACTIVE" | "REVIEW";
 };
+
+export type TeamMemberMetrics = {
+  assignedTasks: number;
+  completedTasks: number;
+  completionRate: number;
+  finalizedValue: number;
+  roi: number | null;
+  nextTaskTitle: string | null;
+  nextTaskDueDate: string | null;
+};
+
+export type TeamMemberProfile = TeamMember & { metrics: TeamMemberMetrics };
+
+export type TeamTaskStatus = "TODO" | "IN_PROGRESS" | "DONE";
+
+export type TeamTask = {
+  id: string;
+  title: string;
+  details: string;
+  assigneeId: string | null;
+  dueDate: string;
+  status: TeamTaskStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PipelineTone = "blue" | "violet" | "amber" | "green" | "rose";
+
+export type PipelineStage = {
+  id: string;
+  name: string;
+  tone: PipelineTone;
+};
+
+export type SalesOpportunity = {
+  id: string;
+  title: string;
+  company: string;
+  contact: string;
+  amount: number;
+  ownerId: string | null;
+  nextStep: string;
+  dueDate: string;
+  stageId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const DEFAULT_PIPELINE_STAGES: PipelineStage[] = [
+  { id: "stage-new", name: "Novo", tone: "blue" },
+  { id: "stage-contacted", name: "Abordado", tone: "violet" },
+  { id: "stage-finished", name: "Finalizado", tone: "green" },
+];
+
+export function defaultPipelineStages(): PipelineStage[] {
+  return DEFAULT_PIPELINE_STAGES.map((stage) => ({ ...stage }));
+}
 
 export type ActionItem = {
   id: string;
@@ -128,6 +185,9 @@ export type Database = {
   automations: Automations;
   transactions: Transaction[];
   team: TeamMember[];
+  teamTasks: TeamTask[];
+  pipelineStages: PipelineStage[];
+  opportunities: SalesOpportunity[];
   meetings: Meeting[];
   events: CalendarEvent[];
   audit: AuditEntry[];

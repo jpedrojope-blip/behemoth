@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { runAutomations } from "@/lib/automations";
 import { createSeed } from "@/lib/seed";
-import { DEFAULT_AUTOMATIONS, type AuditEntry, type Database } from "@/lib/types";
+import { DEFAULT_AUTOMATIONS, defaultPipelineStages, type AuditEntry, type Database } from "@/lib/types";
 
 const DATA_DIR = path.join(process.cwd(), ".data");
 const DATA_FILE = path.join(DATA_DIR, "behemoth.json");
@@ -40,6 +40,9 @@ function normalize(db: Database): Database {
     automations: { ...DEFAULT_AUTOMATIONS, ...(db.automations ?? {}) },
     transactions: db.transactions ?? [],
     team: db.team ?? [],
+    teamTasks: db.teamTasks ?? [],
+    pipelineStages: db.pipelineStages ?? defaultPipelineStages(),
+    opportunities: db.opportunities ?? [],
     meetings: (db.meetings ?? []).map((meeting) => ({ ...meeting, summary: meeting.summary ?? "" })),
     events: db.events ?? [],
     audit: db.audit ?? [],
@@ -50,7 +53,9 @@ function normalize(db: Database): Database {
 function load(): Database {
   if (cache.db) {
     // O cache sobrevive a hot reloads: pode ter sido gravado por um schema anterior.
-    if (!cache.db.automations || !cache.db.dismissed) cache.db = normalize(cache.db);
+    if (!cache.db.automations || !cache.db.dismissed || !cache.db.teamTasks || !cache.db.pipelineStages || !cache.db.opportunities) {
+      cache.db = normalize(cache.db);
+    }
     return cache.db;
   }
   const fromDisk = readFromDisk();

@@ -20,11 +20,12 @@ import {
   Zap,
 } from "lucide-react";
 import { BarChart } from "@/components/ui/bar-chart";
-import { LineChart } from "@/components/ui/line-chart";
+import { FinancialPerformanceChart } from "@/components/ui/financial-performance-chart";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, useResource } from "@/lib/client";
 import {
   PERIOD_LABELS,
+  type FinancialTimelinePoint,
   type Financials,
   type MonthlyPoint,
   type Period,
@@ -39,6 +40,7 @@ type Overview = {
   financials: Financials;
   comparison: { revenue: number; costs: number; profit: number; previous: Financials };
   series: MonthlyPoint[];
+  performanceSeries: FinancialTimelinePoint[];
   weekday: WeekdayPoint[];
   insights: Insight[];
   agenda: CalendarEvent[];
@@ -303,15 +305,7 @@ export default function DashboardPage() {
           {loading && !data ? (
             <p className="loading">Carregando dados...</p>
           ) : (
-            <LineChart
-              labels={(data?.series ?? []).map((point) => point.label)}
-              series={[
-                { label: "Receita", values: (data?.series ?? []).map((point) => point.income), color: "#2563eb", fill: true },
-                { label: "Custos", values: (data?.series ?? []).map((point) => -point.expense), color: "#ef4444" },
-                { label: "Resultado", values: (data?.series ?? []).map((point) => point.profit), color: (financials?.netProfit ?? 0) >= 0 ? "#22c55e" : "#f97316" },
-              ]}
-              height={240}
-            />
+            <FinancialPerformanceChart points={data?.performanceSeries ?? []} height={240} />
           )}
         </div>
 

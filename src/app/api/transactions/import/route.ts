@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { transactionCreateSchema, parseBody } from "@/lib/schemas";
 import { createId, recordAudit } from "@/lib/store";
+import { repairImportedSaleTransactions } from "@/lib/finance";
 import { withWorkspaceDatabase } from "@/lib/workspace-store";
 import type { Transaction } from "@/lib/types";
 import { z } from "zod";
@@ -42,6 +43,7 @@ export async function POST(request: Request) {
       recurrence: body.recurrence,
     }));
 
+    repairImportedSaleTransactions(imported);
     db.transactions.push(...imported);
     recordAudit(db, "IMPORT", "transactions", importId);
     return NextResponse.json({ imported: imported.length, duplicate: false });

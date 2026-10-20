@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   BadgeDollarSign,
   CalendarDays,
@@ -19,14 +19,15 @@ import {
   Zap,
 } from "lucide-react";
 import { Donut } from "@/components/ui/donut";
-import { LineChart } from "@/components/ui/line-chart";
+import { FinancialPerformanceChart } from "@/components/ui/financial-performance-chart";
 import { useToast } from "@/components/ui/toast";
-import { apiFetch, useResource } from "@/lib/client";
+import { apiFetch, useAutoRevalidate, useResource } from "@/lib/client";
 import {
   PERIOD_LABELS,
   type CashPosition,
   type CashFlowFinancials,
   type CategoryTotal,
+  type FinancialTimelinePoint,
   type Financials,
   type MonthlyPoint,
   type Period,
@@ -43,6 +44,7 @@ type Payload = {
   comparison: { revenue: number; costs: number; profit: number };
   categories: string[];
   series: MonthlyPoint[];
+  performanceSeries: FinancialTimelinePoint[];
   incomeByCategory: CategoryTotal[];
   expensesByCategory: CategoryTotal[];
   automated: number;
@@ -50,10 +52,14 @@ type Payload = {
 
 type PdfAnalysis = { summary: { grossRevenue: number; taxes: number; netRevenue: number; cmv: number; grossProfit: number; operatingExpenses: number; financialIncome: number; financialExpense: number; nonOperatingIncome: number; nonOperatingExpense: number; investments: number; financingIn: number; financingOut: number; netProfit: number; grossMargin: number | null; netMargin: number | null; operationalCashFlow: number; freeCashFlow: number; projectedFixedOutflow: number }; warnings: string[] };
 type ImportTransaction = Pick<Transaction, "date" | "description" | "amount" | "kind" | "category" | "financialReport" | "competenceDate" | "cashDate" | "costBehavior">;
+type ImportPreview = { transactions?: ImportTransaction[]; analysis?: PdfAnalysis };
 
 const IMPORT_BATCH_SIZE = 500;
+const MAX_IMPORT_FILE_SIZE = 10 * 1024 * 1024;
+const IMPORT_EXTENSIONS = new Set(["pdf", "xlsx", "xls", "docx"]);
 
 async function importChunkIds(file: File, chunkCount: number) {
+  if (!chunkCount) return [];
   const bytes = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", await file.arrayBuffer()));
   const fileHash = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
   return Promise.all(Array.from({ length: chunkCount }, async (_, index) => {
@@ -100,11 +106,16 @@ const EMPTY_FORM = {
   recurrence: "NONE" as NonNullable<Transaction["recurrence"]>,
 };
 
-function expenseHealthColor(amount: number, revenue: number) {
-  const ratio = revenue ? amount / revenue : 0;
-  if (ratio > 0.4) return "#ef4444";
-  if (ratio > 0.2) return "#f5a524";
-  return "#22c55e";
+const EXPENSE_PALETTE = ["#f97316", "#e95469", "#a855f7", "#2997f5", "#14b87a", "#f5a524"];
+
+function expenseCategoryColor(category: string, index: number) {
+  const normalized = category.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/imposto|tribut|simples|icms|iss\b|pis\b|cofins/.test(normalized)) return "#e95469";
+  if (/cmv|custo|fornecedor|insumo|compra/.test(normalized)) return "#f5a524";
+  if (/salario|folha|equipe|rh\b/.test(normalized)) return "#a855f7";
+  if (/marketing|comissao|frete|vendas?/.test(normalized)) return "#f97316";
+  if (/aluguel|energia|internet|administrativ/.test(normalized)) return "#2997f5";
+  return EXPENSE_PALETTE[index % EXPENSE_PALETTE.length];
 }
 
 function signedBrl(value: number) {
@@ -120,6 +131,7 @@ export default function FinanceiroPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<"report" | "pdf">("report");
+  const importDialogRef = useRef<HTMLDialogElement>(null);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [processingPdf, setProcessingPdf] = useState(false);
   const [savingImport, setSavingImport] = useState(false);
@@ -128,11 +140,21 @@ export default function FinanceiroPage() {
   const [importIds, setImportIds] = useState<string[]>([]);
   const [completedImportChunks, setCompletedImportChunks] = useState(0);
   const [pdfAnalysis, setPdfAnalysis] = useState<PdfAnalysis | null>(null);
+  const [importError, setImportError] = useState("");
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
   const notify = useToast();
 
   useEffect(() => {
     setVisibleSections(readFinanceSections());
   }, []);
+
+  useEffect(() => {
+    const dialog = importDialogRef.current;
+    if (!dialog) return;
+
+    if (activeTab === "pdf" && !dialog.open) dialog.showModal();
+    if (activeTab === "report" && dialog.open) dialog.close();
+  }, [activeTab]);
 
   function toggleFinanceSection(id: FinanceSectionId) {
     const next = new Set(visibleSections);
@@ -149,6 +171,7 @@ export default function FinanceiroPage() {
   const { data, loading, error } = useResource<Payload>(
     `/api/transactions?period=${period}&kind=${kind}&category=${encodeURIComponent(category)}`,
   );
+  useAutoRevalidate();
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).has("novo")) setFormOpen(true);
@@ -172,33 +195,65 @@ export default function FinanceiroPage() {
     }
   }
 
-  async function processFinancialFile() {
-    if (!pdfFile) return;
+  async function processFinancialFile(fileToProcess = pdfFile) {
+    if (!fileToProcess) return;
     setProcessingPdf(true);
     setPdfImportDone(false);
     setPdfTransactions([]);
     setImportIds([]);
     setCompletedImportChunks(0);
     setPdfAnalysis(null);
+    setImportError("");
     try {
       const body = new FormData();
-      body.append("file", pdfFile);
-      const response = await fetch("/api/finance/pdf", { method: "POST", body });
-      const payload = (await response.json()) as { error?: string; transactions?: ImportTransaction[]; analysis?: PdfAnalysis };
-      if (!response.ok) throw new Error(payload.error ?? "Não foi possível ler este arquivo.");
+      body.append("file", fileToProcess);
+      const payload = await apiFetch<ImportPreview>("/api/finance/pdf", { method: "POST", body });
       const extracted = payload.transactions ?? [];
       const batches = Math.ceil(extracted.length / IMPORT_BATCH_SIZE);
-      const identifiers = await importChunkIds(pdfFile, batches);
+      const identifiers = await importChunkIds(fileToProcess, batches);
       setPdfTransactions(extracted);
       setImportIds(identifiers);
       setCompletedImportChunks(0);
       setPdfAnalysis(payload.analysis ?? null);
       notify(extracted.length ? `${extracted.length} lançamento(s) encontrados. Confira a prévia e confirme a importação.` : "O arquivo foi lido, mas não tem lançamentos detalhados com data para importar.", extracted.length ? "success" : "error");
     } catch (cause) {
-      notify(cause instanceof Error ? cause.message : "Erro ao ler o arquivo.", "error");
+      const message = cause instanceof Error ? cause.message : "Erro ao ler o arquivo.";
+      setImportError(message);
+      notify(message, "error");
     } finally {
       setProcessingPdf(false);
     }
+  }
+
+  function clearImportPreview() {
+    setPdfFile(null);
+    setPdfTransactions([]);
+    setImportIds([]);
+    setCompletedImportChunks(0);
+    setPdfAnalysis(null);
+    setPdfImportDone(false);
+    setImportError("");
+  }
+
+  function chooseFinancialFile(file: File | undefined) {
+    if (!file) return;
+    const extension = file.name.toLowerCase().split(".").pop() ?? "";
+    if (!IMPORT_EXTENSIONS.has(extension)) {
+      notify("Envie um PDF, uma planilha Excel (.xlsx/.xls) ou um documento Word (.docx).", "error");
+      return;
+    }
+    if (file.size > MAX_IMPORT_FILE_SIZE) {
+      notify("O arquivo deve ter no máximo 10 MB.", "error");
+      return;
+    }
+    setPdfFile(file);
+    setPdfTransactions([]);
+    setImportIds([]);
+    setCompletedImportChunks(0);
+    setPdfAnalysis(null);
+    setPdfImportDone(false);
+    setImportError("");
+    void processFinancialFile(file);
   }
 
   async function confirmImport() {
@@ -259,6 +314,8 @@ export default function FinanceiroPage() {
   const costs = financials?.costs ?? 0;
   const margin = (financials?.netMargin ?? 0) * 100;
   const costIndex = revenue ? (costs / revenue) * 100 : 0;
+  const importBatchCount = Math.ceil(pdfTransactions.length / IMPORT_BATCH_SIZE);
+  const importProgress = importBatchCount ? Math.round((completedImportChunks / importBatchCount) * 100) : 0;
 
   return (
     <div className="page-wrap financial-page">
@@ -302,60 +359,99 @@ export default function FinanceiroPage() {
 
       {error && <p className="form-error">{error}</p>}
 
-      <div className="tabs" role="tablist" aria-label="Área financeira">
-        <button className={`tab ${activeTab === "report" ? "active" : ""}`} onClick={() => setActiveTab("report")} role="tab" aria-selected={activeTab === "report"}>
+      <div className="tabs" role="group" aria-label="Área financeira">
+        <button className={`tab ${activeTab === "report" ? "active" : ""}`} onClick={() => setActiveTab("report")} aria-pressed={activeTab === "report"}>
           Visão geral
         </button>
-        <button className={`tab ${activeTab === "pdf" ? "active" : ""}`} onClick={() => setActiveTab("pdf")} role="tab" aria-selected={activeTab === "pdf"}>
+        <button className={`tab ${activeTab === "pdf" ? "active" : ""}`} onClick={() => setActiveTab("pdf")} aria-haspopup="dialog" aria-expanded={activeTab === "pdf"}>
           <FileText size={15} /> Importar arquivo
         </button>
       </div>
 
-      {activeTab === "pdf" && (
-        <section className="section card pdf-import-card">
-          <div className="card-head">
+      <dialog
+        ref={importDialogRef}
+        className="pdf-import-dialog"
+        aria-labelledby="financial-import-title"
+        onCancel={(event) => {
+          event.preventDefault();
+          setActiveTab("report");
+        }}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) setActiveTab("report");
+        }}
+      >
+        <section className="pdf-import-card" aria-busy={processingPdf || savingImport}>
+          <div className="pdf-import-modal-head">
             <div>
               <p className="card-kicker">IMPORTAÇÃO DE DADOS</p>
-              <h2>Importe dados financeiros</h2>
-              <p className="small muted">Importe linhas financeiras com data e valor. Revise categorias e classificação DRE/DFC antes de confirmar.</p>
+              <h2 id="financial-import-title">Importe dados financeiros</h2>
+              <p className="small muted">Envie um PDF, Excel ou Word. A Behemoth mostra a prévia antes de salvar qualquer lançamento.</p>
             </div>
+            <button className="modal-close pdf-import-close" type="button" aria-label="Fechar importação" onClick={() => setActiveTab("report")}>
+              <X size={18} />
+            </button>
           </div>
-          <label className="pdf-dropzone" htmlFor="financial-pdf">
+          <label
+            className={`pdf-dropzone ${isDraggingFile ? "is-dragging" : ""}`}
+            htmlFor="financial-pdf"
+            onDragEnter={(event) => {
+              event.preventDefault();
+              setIsDraggingFile(true);
+            }}
+            onDragOver={(event) => event.preventDefault()}
+            onDragLeave={(event) => {
+              if (event.currentTarget === event.target) setIsDraggingFile(false);
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              setIsDraggingFile(false);
+              chooseFinancialFile(event.dataTransfer.files[0]);
+            }}
+          >
             <Upload size={25} />
             <strong>{pdfFile ? pdfFile.name : "Selecione ou arraste PDF, Excel ou Word aqui"}</strong>
-            <span>{pdfFile ? `${(pdfFile.size / 1024 / 1024).toFixed(2)} MB · pronto para ler` : "PDF · Excel (.xlsx/.xls) · Word (.docx) · máximo 10 MB"}</span>
-            <input id="financial-pdf" type="file" accept="application/pdf,.pdf,.xlsx,.xls,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => {
-              setPdfFile(event.target.files?.[0] ?? null);
-              setPdfTransactions([]);
-              setImportIds([]);
-              setCompletedImportChunks(0);
-              setPdfAnalysis(null);
-              setPdfImportDone(false);
-            }} />
+            <span>{pdfFile ? `${(pdfFile.size / 1024 / 1024).toFixed(2)} MB · ${processingPdf ? "lendo arquivo..." : "prévia pronta automaticamente"}` : "PDF · Excel (.xlsx/.xls) · Word (.docx) · máximo 10 MB"}</span>
+            <input
+              id="financial-pdf"
+              type="file"
+              accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.ms-excel,.xls,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={(event) => {
+                chooseFinancialFile(event.target.files?.[0]);
+                event.currentTarget.value = "";
+              }}
+            />
           </label>
           <div className="pdf-import-actions">
-            <button className="btn btn-primary" disabled={!pdfFile || processingPdf || savingImport || pdfImportDone} onClick={processFinancialFile}>
-              {processingPdf ? "Lendo arquivo..." : "Ler arquivo"}
+            <button className="btn btn-primary" disabled={!pdfFile || processingPdf || savingImport || pdfImportDone} onClick={() => void processFinancialFile()}>
+              {processingPdf ? "Lendo arquivo..." : pdfAnalysis ? "Ler novamente" : "Ler arquivo"}
             </button>
             {pdfTransactions.length > 0 && !pdfImportDone && <button className="btn btn-primary" disabled={savingImport} onClick={confirmImport}>
               {savingImport ? "Importando..." : `Confirmar ${pdfTransactions.length} lançamento(s)`}
             </button>}
-            {pdfFile && <button className="btn btn-ghost" onClick={() => {
-              setPdfFile(null);
-              setPdfTransactions([]);
-              setImportIds([]);
-              setCompletedImportChunks(0);
-              setPdfAnalysis(null);
-              setPdfImportDone(false);
-            }}>Remover arquivo</button>}
+            {pdfFile && <button className="btn btn-ghost" onClick={clearImportPreview}>Remover arquivo</button>}
           </div>
+          <div className="import-flow" aria-label="Etapas da importação">
+            <span className={pdfFile ? "done" : ""}>1. Arquivo</span>
+            <span className={pdfTransactions.length || pdfAnalysis ? "done" : ""}>2. Prévia</span>
+            <span className={pdfImportDone ? "done" : ""}>3. Confirmar</span>
+          </div>
+          <div className="import-status" role="status" aria-live="polite">
+            {processingPdf && "Lendo o arquivo e organizando os lançamentos..."}
+            {savingImport && `Salvando lançamentos: ${importProgress}% concluído.`}
+          </div>
+          {importError && <p className="import-error" role="alert">{importError}</p>}
+          {savingImport && <progress className="import-progress" value={completedImportChunks} max={importBatchCount}> {importProgress}% </progress>}
           {pdfImportDone && <div className="pdf-result"><strong>Importação concluída.</strong><p className="small muted">Os lançamentos já aparecem no relatório financeiro.</p></div>}
           {pdfTransactions.length > 0 && (
             <div className="pdf-result">
               <strong>{pdfImportDone ? "Lançamentos importados" : `${pdfTransactions.length} lançamento(s) encontrados · revise antes de importar`}</strong>
               <div className="pdf-transaction-list">
                 {pdfTransactions.slice(0, 8).map((item, index) => (
-                  <div key={`${item.date}-${index}`}><span>{item.date}</span><b>{item.description}</b><em>{item.kind === "INCOME" ? "+" : "−"} {brl(item.amount)}</em></div>
+                  <div className={`pdf-transaction-row ${item.kind === "INCOME" ? "is-income" : "is-expense"}`} key={`${item.date}-${index}`}>
+                    <span className="transaction-date">{item.date}</span>
+                    <b>{item.description}</b>
+                    <em>{item.kind === "INCOME" ? "+" : "−"} {brl(item.amount)}</em>
+                  </div>
                 ))}
               </div>
               {pdfTransactions.length > 8 && <p className="small muted">+ {pdfTransactions.length - 8} lançamento(s) adicionais</p>}
@@ -366,10 +462,10 @@ export default function FinanceiroPage() {
             <div className="pdf-result pdf-analysis">
               <strong>Análise contábil identificada</strong>
               <div className="pdf-analysis-grid">
-                <span>Receita bruta <b>{brl(pdfAnalysis.summary.grossRevenue)}</b></span><span>Impostos <b>{brl(pdfAnalysis.summary.taxes)}</b></span>
-                <span>Receita líquida <b>{brl(pdfAnalysis.summary.netRevenue)}</b></span><span>CMV e custos <b>{brl(pdfAnalysis.summary.cmv)}</b></span>
-                <span>Lucro bruto <b>{brl(pdfAnalysis.summary.grossProfit)}</b></span><span>Despesas operacionais <b>{brl(pdfAnalysis.summary.operatingExpenses)}</b></span>
-                <span>Lucro líquido <b>{brl(pdfAnalysis.summary.netProfit)}</b></span><span>Fluxo de caixa livre <b>{brl(pdfAnalysis.summary.freeCashFlow)}</b></span>
+                <span className="analysis-revenue">Receita bruta <b>{brl(pdfAnalysis.summary.grossRevenue)}</b></span><span className="analysis-tax">Impostos <b>{brl(pdfAnalysis.summary.taxes)}</b></span>
+                <span className="analysis-net-revenue">Receita líquida <b>{brl(pdfAnalysis.summary.netRevenue)}</b></span><span className="analysis-cost">CMV e custos <b>{brl(pdfAnalysis.summary.cmv)}</b></span>
+                <span className="analysis-profit">Lucro bruto <b>{brl(pdfAnalysis.summary.grossProfit)}</b></span><span className="analysis-expense">Despesas operacionais <b>{brl(pdfAnalysis.summary.operatingExpenses)}</b></span>
+                <span className="analysis-net-profit">Lucro líquido <b>{brl(pdfAnalysis.summary.netProfit)}</b></span><span className={pdfAnalysis.summary.freeCashFlow >= 0 ? "analysis-cash-positive" : "analysis-cash-negative"}>Fluxo de caixa livre <b>{brl(pdfAnalysis.summary.freeCashFlow)}</b></span>
               </div>
               <p className="small muted">DRE: competência · DFC: caixa · Margem bruta: {pdfAnalysis.summary.grossMargin === null ? "—" : percent(pdfAnalysis.summary.grossMargin / 100)} · Margem líquida: {pdfAnalysis.summary.netMargin === null ? "—" : percent(pdfAnalysis.summary.netMargin / 100)}</p>
               {pdfAnalysis.warnings.map((warning) => <p className="small muted" key={warning}>{warning}</p>)}
@@ -377,9 +473,8 @@ export default function FinanceiroPage() {
           )}
           {pdfAnalysis && !pdfTransactions.length && <div className="pdf-result"><strong>Não encontramos lançamentos detalhados para importar.</strong><p className="small muted">A prévia encontrou valores, mas os resumos não viram lançamentos com data automaticamente, para evitar duplicar totais. PDFs digitalizados precisam passar por OCR antes do envio.</p></div>}
         </section>
-      )}
+      </dialog>
 
-      {activeTab === "report" && <>
       <section className="kpi-grid finance-summary-grid" hidden={!visibleSections.has("summary")}>
         <FinanceCard
           icon={<BadgeDollarSign size={22} />}
@@ -414,9 +509,7 @@ export default function FinanceiroPage() {
           positive={margin >= 0}
         />
       </section>
-      </>}
 
-      {activeTab === "report" && <>
       <section className="section split" hidden={!visibleSections.has("charts")}>
         <div className="card">
           <div className="card-head">
@@ -428,15 +521,7 @@ export default function FinanceiroPage() {
           {loading && !data ? (
             <p className="loading">Carregando...</p>
           ) : (
-            <LineChart
-              labels={(data?.series ?? []).map((point) => point.label)}
-              series={[
-                { label: "Receita", values: (data?.series ?? []).map((point) => point.income), color: "#3b82f6", fill: true },
-                { label: "Custos", values: (data?.series ?? []).map((point) => -point.expense), color: "#ef4444" },
-                { label: "Resultado", values: (data?.series ?? []).map((point) => point.profit), color: (financials?.netProfit ?? 0) >= 0 ? "#22c55e" : "#f97316" },
-              ]}
-              height={250}
-            />
+            <FinancialPerformanceChart points={data?.performanceSeries ?? []} height={250} />
           )}
         </div>
 
@@ -449,10 +534,10 @@ export default function FinanceiroPage() {
           </div>
           {data?.expensesByCategory.length ? (
             <Donut
-              slices={data.expensesByCategory.map((entry) => ({
+              slices={data.expensesByCategory.map((entry, index) => ({
                 label: entry.category,
                 value: entry.amount,
-                color: expenseHealthColor(entry.amount, revenue),
+                color: expenseCategoryColor(entry.category, index),
               }))}
               centerValue={brl(costs)}
               centerLabel="Total"
@@ -466,7 +551,6 @@ export default function FinanceiroPage() {
           )}
         </div>
       </section>
-      </>}
 
       <section className="section split" hidden={!visibleSections.has("dre")}>
         <div className="card">

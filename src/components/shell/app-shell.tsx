@@ -2,17 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Bell,
+  Check,
   CalendarDays,
   ChevronDown,
   CircleHelp,
+  Crown,
   FileText,
   LayoutDashboard,
+  KanbanSquare,
   Menu,
+  Moon,
   Search,
   Settings,
+  Sun,
   TrendingUp,
   Users,
   WalletCards,
@@ -32,6 +37,7 @@ const ICONS: Record<NavItem["icon"], typeof LayoutDashboard> = {
   wallet: WalletCards,
   settings: Settings,
   help: CircleHelp,
+  kanban: KanbanSquare,
 };
 
 const NICHES = [
@@ -45,15 +51,21 @@ const NICHES = [
   "Saúde",
 ];
 
-const PLANS = ["Basic", "Pro", "Enterprise"];
+const PLANS = [
+  { name: "Basic", description: "Para organizar a operação" },
+  { name: "Pro", description: "Para acompanhar o negócio todo" },
+  { name: "Enterprise", description: "Para times e operações maiores" },
+];
 
 type ShellData = { company: Company; openActionItems: number };
 type SessionUser = { id: string; email: string; name: string; avatarUrl: string | null };
 type SessionPayload = { authenticated: boolean; user: SessionUser | null };
+type ColorTheme = "light" | "dark";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
   const [menuOpen, setMenuOpen] = useState(false);
+  const [theme, setTheme] = useState<ColorTheme>("light");
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     if (typeof window === "undefined") return 264;
     const saved = Number(window.localStorage.getItem("behemoth-sidebar-width"));
@@ -62,15 +74,39 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [authReady, setAuthReady] = useState(pathname === "/login");
   const [shell, setShell] = useState<ShellData | null>(null);
   const [profile, setProfile] = useState<SessionUser | null>(null);
+  const [planPickerOpen, setPlanPickerOpen] = useState(false);
+  const [updatingPlan, setUpdatingPlan] = useState<string | null>(null);
+  const mainRef = useRef<HTMLElement>(null);
   const dataVersion = useDataVersion();
 
   useAutoRevalidate();
 
   useEffect(() => {
+    const storageKey = "behemoth-theme";
+    const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+    const applyTheme = (nextTheme: ColorTheme) => {
+      document.documentElement.dataset.theme = nextTheme;
+      setTheme(nextTheme);
+    };
+    const getSavedTheme = (): ColorTheme | null => {
+      const savedTheme = window.localStorage.getItem(storageKey);
+      return savedTheme === "light" || savedTheme === "dark" ? savedTheme : null;
+    };
+    const initialTheme = getSavedTheme() ?? (systemTheme.matches ? "dark" : "light");
+
+    applyTheme(initialTheme);
+
+    const syncSystemTheme = (event: MediaQueryListEvent) => {
+      if (getSavedTheme() === null) applyTheme(event.matches ? "dark" : "light");
+    };
+    systemTheme.addEventListener("change", syncSystemTheme);
+    return () => systemTheme.removeEventListener("change", syncSystemTheme);
+  }, []);
+
+  useEffect(() => {
     if (pathname === "/login") return;
     let active = true;
-    fetch("/api/auth/session", { cache: "no-store" })
-      .then((response) => response.json() as Promise<SessionPayload>)
+    apiFetch<SessionPayload>("/api/auth/session")
       .then((session) => {
         if (!active) return;
         if (!session.authenticated) window.location.replace("/login");
@@ -82,6 +118,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       .catch(() => window.location.replace("/login"));
     return () => { active = false; };
   }, [pathname, dataVersion]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setPlanPickerOpen(false);
+      mainRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [pathname]);
 
   function resizeSidebar(event: React.PointerEvent<HTMLDivElement>) {
     const move = (moveEvent: PointerEvent) => {
@@ -114,6 +158,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const company = shell?.company;
   const close = () => setMenuOpen(false);
 
+  function navigateFromSidebar() {
+    close();
+    setPlanPickerOpen(false);
+  }
+
+  const toggleTheme = () => {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    window.localStorage.setItem("behemoth-theme", nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+    setTheme(nextTheme);
+  };
+
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.replace("/login");
@@ -124,20 +180,44 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   async function patchCompany(body: Partial<Company>) {
     try {
-      await apiFetch("/api/settings", { method: "PATCH", body: JSON.stringify(body) });
+      const payload = await apiFetch<{ company: Company }>("/api/settings", { method: "PATCH", body: JSON.stringify(body) });
+      setShell((currentShell) => currentShell ? { ...currentShell, company: payload.company } : currentShell);
+      return true;
     } catch {
-      // o toast das páginas cobre o erro; aqui a revalidação devolve o valor anterior
+      return false;
     }
+  }
+
+  async function selectPlan(plan: string) {
+    if (company?.plan === plan) {
+      setPlanPickerOpen(false);
+      return;
+    }
+    setUpdatingPlan(plan);
+    const updated = await patchCompany({ plan });
+    setUpdatingPlan(null);
+    if (updated) setPlanPickerOpen(false);
   }
 
   return (
     <ToastProvider>
       <div className="app-shell" style={{ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}>
-        <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
-          <Link href="/" className="sidebar-brand" onClick={close} aria-label="Behemoth — Início">
-            <img src="/brand/behemoth-logo.png" alt="Behemoth" />
+        <aside className={`sidebar ${menuOpen ? "open" : ""}`} aria-label="Menu lateral">
+          <Link href="/" className="sidebar-brand" onClick={navigateFromSidebar} aria-label="Behemoth — Início">
+            <svg
+              className="sidebar-brand-mark"
+              viewBox="0 0 48 48"
+              fill="none"
+              aria-hidden="true"
+            >
+              <g stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M24 5 42 15.5 24 26 6 15.5 24 5Z" />
+                <path d="M6 15.5v6.8l18 10.4 18-10.4v-6.8" />
+                <path d="M6 22.3v6.8l18 10.4 18-10.4v-6.8" />
+              </g>
+            </svg>
           </Link>
-          <Link href="/configuracoes" className="sidebar-user" onClick={close}>
+          <Link href="/configuracoes" className="sidebar-user" onClick={navigateFromSidebar}>
             <div className="avatar">
               {profile?.avatarUrl
                 ? <img src={profile.avatarUrl} alt={`Foto de perfil de ${profile.name}`} />
@@ -149,7 +229,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </Link>
 
-          <nav>
+          <nav aria-label="Navegação principal">
             {NAV_ITEMS.filter((item) => item.section === "workspace").map((item) => {
               const Icon = ICONS[item.icon];
               return (
@@ -157,7 +237,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   key={item.href}
                   href={item.href}
                   className={`nav-item ${current?.href === item.href ? "active" : ""}`}
-                  onClick={close}
+                  aria-label={item.label}
+                  aria-current={current?.href === item.href ? "page" : undefined}
+                  onClick={navigateFromSidebar}
                 >
                   <Icon size={19} />
                   <span>{item.label}</span>
@@ -171,7 +253,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           <div className="sidebar-divider" />
 
-          <nav>
+          <nav aria-label="Conta">
             {NAV_ITEMS.filter((item) => item.section === "conta").map((item) => {
               const Icon = ICONS[item.icon];
               return (
@@ -179,7 +261,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   key={item.href}
                   href={item.href}
                   className={`nav-item ${current?.href === item.href ? "active" : ""}`}
-                  onClick={close}
+                  aria-label={item.label}
+                  aria-current={current?.href === item.href ? "page" : undefined}
+                  onClick={navigateFromSidebar}
                 >
                   <Icon size={19} />
                   <span>{item.label}</span>
@@ -188,13 +272,35 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             })}
           </nav>
 
+          <button
+            type="button"
+            className="nav-item theme-toggle"
+            onClick={toggleTheme}
+            aria-label={`Ativar modo ${theme === "dark" ? "claro" : "escuro"}`}
+            aria-pressed={theme === "dark"}
+            title={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"}
+          >
+            {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
+            <span>{theme === "dark" ? "Modo claro" : "Modo escuro"}</span>
+          </button>
+
           <div className="sidebar-bottom">
-            <div className="niche-card">
-              <strong>Seu Nicho</strong>
-              <p>Selecione seu nicho de atuação</p>
+            <div className="upgrade-card">
+              <div className="upgrade-head">
+                <strong>Seu plano</strong>
+              </div>
+              <p>Plano {company?.plan ?? "Basic"} · veja as opções disponíveis</p>
+              <button type="button" onClick={() => setPlanPickerOpen(true)} aria-label="Ver planos" title="Ver planos">
+                <TrendingUp size={18} aria-hidden="true" />
+                <span>Ver Planos</span>
+              </button>
+            </div>
+
+            <div className="niche-card compact-niche">
+              <strong>Nicho</strong>
               <select
                 value={company?.niche ?? ""}
-                onChange={(event) => patchCompany({ niche: event.target.value })}
+                onChange={(event) => void patchCompany({ niche: event.target.value })}
                 aria-label="Nicho da empresa"
               >
                 <option value="">Selecionar nicho</option>
@@ -205,48 +311,65 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 ))}
               </select>
             </div>
-
-            <div className="upgrade-card">
-              <div className="upgrade-head">
-                <strong>Upgrade de Plano</strong>
-                <TrendingUp size={18} />
-              </div>
-              <p>Desbloqueie recursos exclusivos</p>
-              <Link href="/configuracoes" onClick={close}>
-                Ver Planos
-              </Link>
-            </div>
           </div>
           <div className="sidebar-resizer" onPointerDown={resizeSidebar} role="separator" aria-label="Redimensionar menu lateral" />
         </aside>
 
         {menuOpen && <button className="sidebar-backdrop" aria-label="Fechar menu" onClick={close} />}
 
-        <main className="main-content">
+        <main ref={mainRef} className="main-content" tabIndex={-1}>
           <header className="topbar">
             <button className="mobile-menu" onClick={() => setMenuOpen((open) => !open)} aria-label="Menu">
               {menuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
 
             <div className="brand-context">
-              <Link href="/" className="brand">
-                <img className="brand-logo" src="/brand/behemoth-logo.png" alt="Behemoth" />
-              </Link>
               <span className="brand-tagline">CLAREZA PARA DECIDIR</span>
             </div>
 
-            <div className="plan-select">
-              <select
-                value={company?.plan ?? "Basic"}
-                onChange={(event) => patchCompany({ plan: event.target.value })}
-                aria-label="Plano"
+            <div className="plan-control">
+              <button
+                type="button"
+                className="plan-trigger"
+                aria-haspopup="dialog"
+                aria-expanded={planPickerOpen}
+                onClick={() => setPlanPickerOpen((open) => !open)}
               >
-                {PLANS.map((plan) => (
-                  <option key={plan} value={plan}>
-                    Plano {plan}
-                  </option>
-                ))}
-              </select>
+                <Crown size={15} aria-hidden="true" />
+                <span><small>Seu plano</small><strong>Plano {company?.plan ?? "Basic"}</strong></span>
+                <ChevronDown size={15} aria-hidden="true" />
+              </button>
+              {planPickerOpen && (
+                <section className="plan-menu" role="dialog" aria-label="Escolha seu plano">
+                  <div className="plan-menu-head">
+                    <div>
+                      <p>PLANOS BEHEMOTH</p>
+                      <strong>Escolha como sua operação evolui</strong>
+                    </div>
+                    <button type="button" aria-label="Fechar planos" onClick={() => setPlanPickerOpen(false)}><X size={16} /></button>
+                  </div>
+                  <div className="plan-options">
+                    {PLANS.map((plan) => {
+                      const selected = company?.plan === plan.name;
+                      const isUpdating = updatingPlan === plan.name;
+                      return (
+                        <button
+                          type="button"
+                          key={plan.name}
+                          className={`plan-option ${selected ? "selected" : ""}`}
+                          onClick={() => void selectPlan(plan.name)}
+                          disabled={Boolean(updatingPlan)}
+                        >
+                          <span className="plan-option-icon">{selected ? <Check size={14} /> : <Crown size={14} />}</span>
+                          <span><strong>Plano {plan.name}</strong><small>{isUpdating ? "Atualizando plano..." : plan.description}</small></span>
+                          {selected && <em>Atual</em>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <Link href="/configuracoes#plan" onClick={navigateFromSidebar}>Gerenciar dados do plano</Link>
+                </section>
+              )}
             </div>
 
             <div className="top-actions">
@@ -257,11 +380,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <Bell size={18} />
                 {!!shell?.openActionItems && <em>{shell.openActionItems}</em>}
               </Link>
-              <Link className="user-chip" href="/configuracoes">
-                <div className="avatar">{initials(company?.name ?? "Behemoth")}</div>
+              <Link className="user-chip" href="/configuracoes" onClick={navigateFromSidebar}>
+                <div className="avatar">
+                  {profile?.avatarUrl
+                    ? <img src={profile.avatarUrl} alt={`Foto de perfil de ${profile.name}`} />
+                    : initials(profile?.name ?? company?.ownerName ?? "Behemoth")}
+                </div>
                 <div>
-                  <strong>{company?.name ?? "Workspace"}</strong>
-                  <small>{current?.label ?? "Behemoth"}</small>
+                  <strong>{profile?.name ?? company?.ownerName ?? "Workspace"}</strong>
+                  <small>{profile?.email ?? current?.label ?? "Behemoth"}</small>
                 </div>
                 <ChevronDown size={15} />
               </Link>
@@ -269,7 +396,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </header>
 
-          {children}
+          <div className="app-route" key={pathname}>{children}</div>
 
           <footer className="app-footer">
             © {new Date().getFullYear()} Behemoth. Todos os direitos reservados.

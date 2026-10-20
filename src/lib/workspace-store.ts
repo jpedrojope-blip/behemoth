@@ -2,11 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { runAutomations } from "@/lib/automations";
+import { repairImportedSaleTransactions } from "@/lib/finance";
 import { createSeed } from "@/lib/seed";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import { userFromRequest } from "@/lib/supabase-auth";
 import { recordAudit } from "@/lib/store";
-import { DEFAULT_AUTOMATIONS, type Database } from "@/lib/types";
+import { DEFAULT_AUTOMATIONS, defaultPipelineStages, type Database } from "@/lib/types";
 
 type WorkspaceIdentity = {
   id: string;
@@ -44,6 +45,9 @@ function normalize(db: Database): Database {
     automations: { ...DEFAULT_AUTOMATIONS, ...(db.automations ?? {}) },
     transactions: db.transactions ?? [],
     team: db.team ?? [],
+    teamTasks: db.teamTasks ?? [],
+    pipelineStages: db.pipelineStages ?? defaultPipelineStages(),
+    opportunities: db.opportunities ?? [],
     meetings: (db.meetings ?? []).map((meeting) => ({ ...meeting, summary: meeting.summary ?? "" })),
     events: db.events ?? [],
     audit: db.audit ?? [],
@@ -70,6 +74,9 @@ function emptyDatabase(workspace: WorkspaceIdentity): Database {
     },
     transactions: [],
     team: [],
+    teamTasks: [],
+    pipelineStages: defaultPipelineStages(),
+    opportunities: [],
     meetings: [],
     events: [],
     audit: [],
@@ -217,10 +224,11 @@ export async function withWorkspaceDatabase(
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const snapshot = await loadWorkspace(identity);
       const db = snapshot.db;
+      const repairedImports = repairImportedSaleTransactions(db.transactions);
       const before = runAutomations(db);
       for (const id of before) recordAudit(db, "AUTO", "automation", id, true);
       const response = await action(db);
-      let changed = before.length > 0;
+      let changed = repairedImports > 0 || before.length > 0;
       if (response.status >= 400) return response;
 
       const after = runAutomations(db);
@@ -256,6 +264,9 @@ export function resetWorkspaceData(db: Database, keepCompany: boolean) {
   const company = { ...db.company };
   db.transactions = [];
   db.team = [];
+  db.teamTasks = [];
+  db.pipelineStages = defaultPipelineStages();
+  db.opportunities = [];
   db.meetings = [];
   db.events = [];
   db.dismissed = [];

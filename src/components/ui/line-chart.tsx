@@ -3,17 +3,42 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { brlExact, compactBrl, niceScale } from "@/lib/format";
 
-export type ChartSeries = { label: string; values: number[]; color: string; fill?: boolean };
+export type ChartSeries = {
+  label: string;
+  values: Array<number | null>;
+  color: string;
+  fill?: boolean;
+  lineStyle?: "solid" | "dashed";
+};
 
 type Props = {
   labels: string[];
   series: ChartSeries[];
   height?: number;
+  ariaLabel?: string;
 };
 
 const PADDING = { top: 14, right: 14, bottom: 26, left: 58 };
 
-export function LineChart({ labels, series, height = 240 }: Props) {
+type ChartPoint = { index: number; value: number };
+
+function splitIntoSegments(values: Array<number | null>): ChartPoint[][] {
+  const segments: ChartPoint[][] = [];
+  let current: ChartPoint[] = [];
+
+  values.forEach((value, index) => {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      current.push({ index, value });
+      return;
+    }
+    if (current.length) segments.push(current);
+    current = [];
+  });
+  if (current.length) segments.push(current);
+  return segments;
+}
+
+export function LineChart({ labels, series, height = 240, ariaLabel }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(640);
   const [hover, setHover] = useState<number | null>(null);
@@ -30,7 +55,9 @@ export function LineChart({ labels, series, height = 240 }: Props) {
   }, []);
 
   const geometry = useMemo(() => {
-    const values = series.flatMap((entry) => entry.values);
+    const values = series
+      .flatMap((entry) => entry.values)
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
     const rawMax = Math.max(...values, 0);
     const rawMin = Math.min(...values, 0);
     const top = niceScale(rawMax).max;
@@ -48,6 +75,7 @@ export function LineChart({ labels, series, height = 240 }: Props) {
 
     return { x, y, ticks, plotWidth, plotHeight, hasData: rawMax > 0 || rawMin < 0 };
   }, [series, labels.length, width, height]);
+  const labelStep = Math.max(1, Math.ceil(labels.length / 7));
 
   function handleMove(event: React.MouseEvent<SVGSVGElement>) {
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -76,6 +104,7 @@ export function LineChart({ labels, series, height = 240 }: Props) {
         height={height}
         viewBox={`0 0 ${width} ${height}`}
         role="img"
+        aria-label={ariaLabel}
         onMouseMove={handleMove}
         onMouseLeave={() => setHover(null)}
       >
@@ -116,48 +145,69 @@ export function LineChart({ labels, series, height = 240 }: Props) {
           />
         )}
 
-        {series.map((entry) => {
-          const path = entry.values
-            .map((value, index) => `${index ? "L" : "M"}${geometry.x(index)},${geometry.y(value)}`)
+        {series.map((entry, seriesIndex) => {
+          const segments = splitIntoSegments(entry.values);
+          const pathFor = (segment: ChartPoint[]) => segment
+            .map((point, index) => `${index ? "L" : "M"}${geometry.x(point.index)},${geometry.y(point.value)}`)
             .join(" ");
+          const path = segments.map(pathFor).join(" ");
           return (
             <g key={entry.label}>
-              {entry.fill && (
-                <path
-                  d={`${path} L${geometry.x(entry.values.length - 1)},${height - PADDING.bottom} L${geometry.x(0)},${
-                    height - PADDING.bottom
-                  } Z`}
+              {entry.fill && segments.map((segment, index) => {
+                const first = segment[0];
+                const last = segment.at(-1)!;
+                return <path
+                  className="chart-area-fill"
+                  d={`${pathFor(segment)} L${geometry.x(last.index)},${height - PADDING.bottom} L${geometry.x(first.index)},${height - PADDING.bottom} Z`}
                   fill={`url(#fill-${slug(entry.label)})`}
                   stroke="none"
-                />
-              )}
-              <path d={path} fill="none" stroke={entry.color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
-              {entry.values.map((value, index) => (
-                <circle
+                  style={{ animationDelay: `${seriesIndex * 80 + index * 40}ms` }}
+                  key={`${entry.label}-area-${index}`}
+                />;
+              })}
+              <path
+                className={`chart-line-path ${entry.lineStyle === "dashed" ? "chart-line-dashed" : ""}`}
+                d={path}
+                pathLength={entry.lineStyle === "dashed" ? undefined : 1}
+                fill="none"
+                stroke={entry.color}
+                strokeWidth={2.5}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                style={{ animationDelay: `${seriesIndex * 80}ms` }}
+              />
+              {entry.values.map((value, index) => {
+                if (typeof value !== "number") return null;
+                return <circle
                   key={`${entry.label}-${index}`}
+                  className="chart-point"
                   cx={geometry.x(index)}
                   cy={geometry.y(value)}
                   r={hover === index ? 5 : 3}
                   fill="#0f1c35"
                   stroke={entry.color}
                   strokeWidth={2}
-                />
-              ))}
+                  style={{ animationDelay: `${120 + seriesIndex * 80 + index * 28}ms` }}
+                />;
+              })}
             </g>
           );
         })}
 
-        {labels.map((label, index) => (
-          <text
-            key={label}
-            x={geometry.x(index)}
-            y={height - 8}
-            textAnchor="middle"
-            className={`chart-tick ${hover === index ? "active" : ""}`}
-          >
-            {label}
-          </text>
-        ))}
+        {labels.map((label, index) => {
+          if (index % labelStep !== 0 && index !== labels.length - 1) return null;
+          return (
+            <text
+              key={label}
+              x={geometry.x(index)}
+              y={height - 8}
+              textAnchor="middle"
+              className={`chart-tick ${hover === index ? "active" : ""}`}
+            >
+              {label}
+            </text>
+          );
+        })}
       </svg>
 
       {hover !== null && (
@@ -173,7 +223,7 @@ export function LineChart({ labels, series, height = 240 }: Props) {
             <span key={entry.label}>
               <i style={{ background: entry.color }} />
               {entry.label}
-              <b>{brlExact(entry.values[hover] ?? 0)}</b>
+              <b>{typeof entry.values[hover] === "number" ? brlExact(entry.values[hover]) : "Sem movimento"}</b>
             </span>
           ))}
         </div>

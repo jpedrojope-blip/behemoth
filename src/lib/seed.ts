@@ -1,4 +1,4 @@
-import { DEFAULT_AUTOMATIONS, type Database } from "@/lib/types";
+import { DEFAULT_AUTOMATIONS, defaultPipelineStages, type Database } from "@/lib/types";
 
 const COMPANY_ID = "company_acme";
 
@@ -9,6 +9,12 @@ function isoDate(date: Date) {
 function monthsAgo(months: number, day: number) {
   const now = new Date();
   const date = new Date(now.getFullYear(), now.getMonth() - months, day);
+  return isoDate(date);
+}
+
+function daysFromToday(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
   return isoDate(date);
 }
 
@@ -79,10 +85,21 @@ export function createSeed(): Database {
       { id: "tx_5", companyId: COMPANY_ID, kind: "EXPENSE", date: monthsAgo(0, 20), description: "Serviços administrativos", category: "Administrativo", amount: 259, source: "manual", status: "CONFIRMED" },
     ],
     team: [
-      { id: "member_1", companyId: COMPANY_ID, name: "Mariana Costa", type: "HUMAN", role: "Head de Marketing", performance: 94, target: 89, monthlyCost: 9800, generatedValue: 15896, roi: 162, status: "ACTIVE" },
-      { id: "member_2", companyId: COMPANY_ID, name: "Lucas Mendes", type: "HUMAN", role: "Executivo comercial", performance: 88, target: 92, monthlyCost: 7400, generatedValue: 9916, roi: 134, status: "REVIEW" },
-      { id: "agent_1", companyId: COMPANY_ID, name: "CopyMaster Pro", type: "AI", role: "Conteúdo e copy", performance: 91, target: 96, monthlyCost: 620, generatedValue: 1538, roi: 248, status: "ACTIVE" },
-      { id: "agent_2", companyId: COMPANY_ID, name: "SupportBot", type: "AI", role: "Atendimento WhatsApp", performance: 87, target: 90, monthlyCost: 480, generatedValue: 926, roi: 193, status: "ACTIVE" },
+      { id: "member_1", companyId: COMPANY_ID, name: "Mariana Costa", email: "", phone: "", department: "", location: "", type: "HUMAN", role: "Head de Marketing", monthlyCost: 9800, status: "ACTIVE" },
+      { id: "member_2", companyId: COMPANY_ID, name: "Lucas Mendes", email: "", phone: "", department: "", location: "", type: "HUMAN", role: "Executivo comercial", monthlyCost: 7400, status: "REVIEW" },
+      { id: "agent_1", companyId: COMPANY_ID, name: "CopyMaster Pro", email: "", phone: "", department: "", location: "", type: "AI", role: "Conteúdo e copy", monthlyCost: 620, status: "ACTIVE" },
+      { id: "agent_2", companyId: COMPANY_ID, name: "SupportBot", email: "", phone: "", department: "", location: "", type: "AI", role: "Atendimento WhatsApp", monthlyCost: 480, status: "ACTIVE" },
+    ],
+    teamTasks: [
+      { id: "task_1", title: "Revisar campanha de remarketing", details: "Conferir criativos e atualizar os públicos antes da próxima veiculação.", assigneeId: "member_1", dueDate: daysFromToday(1), status: "IN_PROGRESS", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: "task_2", title: "Enviar proposta comercial", details: "Preparar o escopo e encaminhar a proposta para o contato.", assigneeId: "member_2", dueDate: daysFromToday(2), status: "TODO", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: "task_3", title: "Atualizar apresentação da empresa", details: "Revisar os resultados e incluir os dados do último mês.", assigneeId: "member_2", dueDate: daysFromToday(-1), status: "DONE", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    ],
+    pipelineStages: defaultPipelineStages(),
+    opportunities: [
+      { id: "opportunity_1", title: "Plano de mídia trimestral", company: "Studio Cais", contact: "Beatriz Nunes", amount: 6400, ownerId: "member_2", nextStep: "Enviar proposta", dueDate: daysFromToday(2), stageId: "stage-new", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: "opportunity_2", title: "Consultoria de crescimento", company: "Clínica Horizonte", contact: "André Lima", amount: 8900, ownerId: "member_2", nextStep: "Agendar apresentação", dueDate: daysFromToday(4), stageId: "stage-contacted", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      { id: "opportunity_3", title: "Identidade e campanha", company: "Ateliê Aurora", contact: "Paula Reis", amount: 3200, ownerId: "member_1", nextStep: "Contrato confirmado", dueDate: daysFromToday(0), stageId: "stage-finished", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
     ],
     meetings: [
       {

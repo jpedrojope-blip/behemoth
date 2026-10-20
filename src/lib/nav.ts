@@ -1,7 +1,7 @@
 export type NavItem = {
   href: string;
   label: string;
-  icon: "dashboard" | "calendar" | "users" | "meeting" | "wallet" | "settings" | "help";
+  icon: "dashboard" | "calendar" | "users" | "meeting" | "wallet" | "kanban" | "settings" | "help";
   section: "workspace" | "conta";
 };
 
@@ -9,6 +9,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Início", icon: "dashboard", section: "workspace" },
   { href: "/calendario", label: "Calendário", icon: "calendar", section: "workspace" },
   { href: "/equipe", label: "Equipe e Agentes", icon: "users", section: "workspace" },
+  { href: "/pipeline", label: "Pipeline", icon: "kanban", section: "workspace" },
   { href: "/reunioes", label: "Sala de Reunião", icon: "meeting", section: "workspace" },
   { href: "/financeiro", label: "Finanças", icon: "wallet", section: "workspace" },
   { href: "/ajuda", label: "Help center", icon: "help", section: "conta" },

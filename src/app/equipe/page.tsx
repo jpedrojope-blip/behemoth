@@ -4,9 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Bot,
+  CalendarDays,
   ChevronRight,
   DollarSign,
   Gauge as GaugeIcon,
+  Mail,
+  MapPin,
+  Phone,
   Plus,
   Search,
   Target,
@@ -20,8 +24,8 @@ import { BarChart } from "@/components/ui/bar-chart";
 import { Gauge } from "@/components/ui/gauge";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, useResource } from "@/lib/client";
-import { brl, initials, percent } from "@/lib/format";
-import type { TeamMember } from "@/lib/types";
+import { brl, initials } from "@/lib/format";
+import type { TeamMember, TeamMemberProfile } from "@/lib/types";
 
 type Summary = {
   total: number;
@@ -30,22 +34,23 @@ type Summary = {
   monthlyCost: number;
   humanCost: number;
   agentCost: number;
+  assignedTasks: number;
+  completedTasks: number;
   averagePerformance: number;
-  averageRoi: number;
-  onTarget: number;
+  averageRoi: number | null;
 };
 
-type Payload = { team: TeamMember[]; summary: Summary; costAutomation: boolean };
+type Payload = { team: TeamMemberProfile[]; summary: Summary; costAutomation: boolean };
 
 const EMPTY_FORM = {
   name: "",
   role: "",
+  email: "",
+  phone: "",
+  department: "",
+  location: "",
   type: "HUMAN" as TeamMember["type"],
-  performance: "",
-  target: "",
   monthlyCost: "",
-  generatedValue: "",
-  roi: "",
 };
 
 type Filter = "todos" | "HUMAN" | "AI" | "baixo" | "custo";
@@ -54,7 +59,7 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: "todos", label: "Todos" },
   { key: "HUMAN", label: "Funcionários" },
   { key: "AI", label: "Agentes IA" },
-  { key: "baixo", label: "Baixo desempenho" },
+  { key: "baixo", label: "Tarefas pendentes" },
   { key: "custo", label: "Alto custo" },
 ];
 
@@ -87,7 +92,7 @@ export default function EquipePage() {
     }
   }
 
-  async function patch(member: TeamMember, body: Partial<TeamMember>) {
+  async function patch(member: TeamMemberProfile, body: Partial<TeamMember>) {
     try {
       await apiFetch(`/api/team/${member.id}`, { method: "PATCH", body: JSON.stringify(body) });
     } catch (cause) {
@@ -95,7 +100,7 @@ export default function EquipePage() {
     }
   }
 
-  async function remove(member: TeamMember) {
+  async function remove(member: TeamMemberProfile) {
     if (!window.confirm(`Remover ${member.name} da equipe?`)) return;
     try {
       await apiFetch(`/api/team/${member.id}`, { method: "DELETE" });
@@ -112,25 +117,24 @@ export default function EquipePage() {
   const team = all
     .filter((member) => {
       if (filter === "HUMAN" || filter === "AI") return member.type === filter;
-      if (filter === "baixo") return member.performance < member.target;
+      if (filter === "baixo") return member.metrics.assignedTasks > 0 && member.metrics.completionRate < 100;
       if (filter === "custo") return member.monthlyCost > averageCost;
       return true;
     })
     .filter((member) =>
-      query.trim() ? `${member.name} ${member.role}`.toLowerCase().includes(query.trim().toLowerCase()) : true,
+      query.trim() ? `${member.name} ${member.role} ${member.department} ${member.location} ${member.email}`.toLowerCase().includes(query.trim().toLowerCase()) : true,
     );
 
   const agents = all.filter((member) => member.type === "AI");
-  const agentValue = agents.reduce((sum, member) => sum + (member.generatedValue ?? 0), 0);
-  const agentCost = agents.reduce((sum, member) => sum + member.monthlyCost, 0);
-  const savings = agentValue - agentCost;
+  const activeAgents = agents.filter((member) => member.status === "ACTIVE");
+  const agentCost = activeAgents.reduce((sum, member) => sum + member.monthlyCost, 0);
 
   return (
     <div className="page-wrap">
       <div className="page-head">
         <div>
           <h1 className="page-title">Gestão de Funcionários e Agentes</h1>
-          <p className="subtitle">Acompanhe o desempenho da equipe, custos e produtividade com dados reais.</p>
+          <p className="subtitle">Acompanhe os dados profissionais, tarefas e resultados da equipe.</p>
         </div>
         <button className="btn btn-primary" onClick={() => setFormOpen((open) => !open)}>
           {formOpen ? <X size={16} /> : <Plus size={16} />} {formOpen ? "Cancelar" : "Adicionar"}
@@ -159,20 +163,22 @@ export default function EquipePage() {
         <SummaryCard
           icon={<GaugeIcon size={22} />}
           tone="purple"
-          label="Desempenho Médio"
-          value={`${summary?.averagePerformance ?? 0}%`}
-          hint={`${summary?.onTarget ?? 0} de ${summary?.total ?? 0} dentro da meta`}
-          meter={summary?.averagePerformance ?? 0}
-          onClick={() => setDetail({ title: "Desempenho médio", body: `${summary?.onTarget ?? 0} de ${summary?.total ?? 0} integrantes estão dentro da meta. Média atual: ${summary?.averagePerformance ?? 0}%.` })}
+          label="Desempenho médio"
+          value={summary?.assignedTasks ? `${summary.averagePerformance}%` : "—"}
+          hint={`${summary?.completedTasks ?? 0} de ${summary?.assignedTasks ?? 0} tarefas atribuídas`}
+          meter={summary?.assignedTasks ? summary.averagePerformance : undefined}
+          onClick={() => setDetail({ title: "Desempenho médio", body: `A taxa é calculada automaticamente com base em tarefas concluídas e atribuídas: ${summary?.completedTasks ?? 0} de ${summary?.assignedTasks ?? 0}.` })}
         />
         <SummaryCard
           icon={<Target size={22} />}
           tone="green"
-          label="Meta"
-          value={`${summary?.averageRoi ?? 0}%`}
-          hint="retorno estimado sobre o custo"
-          meter={Math.min(100, summary?.averageRoi ?? 0)}
-          onClick={() => setDetail({ title: "Meta", body: `O retorno médio estimado sobre o custo está em ${summary?.averageRoi ?? 0}%.` })}
+          label="ROI estimado"
+          value={summary?.averageRoi == null ? "—" : `${summary.averageRoi}%`}
+          hint={summary?.averageRoi == null ? "informe o custo para calcular" : "negócios finalizados ÷ custo mensal"}
+          meter={summary?.averageRoi == null ? undefined : Math.min(100, summary.averageRoi)}
+          onClick={() => setDetail({ title: "ROI estimado", body: summary?.averageRoi == null
+            ? "Informe o custo mensal das pessoas para que o sistema calcule o retorno sobre os negócios finalizados."
+            : `Calculado automaticamente pelo valor de negócios finalizados neste mês dividido pelo custo mensal cadastrado. ROI atual: ${summary.averageRoi}%.` })}
         />
       </section>
 
@@ -187,8 +193,8 @@ export default function EquipePage() {
               <BarChart
                 labels={all.slice(0, 8).map((member) => member.name)}
                 series={[
-                  { label: "Desempenho", values: all.slice(0, 8).map((member) => member.performance), color: "#8b5cf6" },
-                  { label: "Meta", values: all.slice(0, 8).map((member) => member.target), color: "#22c55e" },
+                  { label: "Concluídas", values: all.slice(0, 8).map((member) => member.metrics.completedTasks), color: "#8b5cf6" },
+                  { label: "Atribuídas", values: all.slice(0, 8).map((member) => member.metrics.assignedTasks), color: "#22c55e" },
                 ]}
                 height={180}
               />
@@ -222,18 +228,63 @@ export default function EquipePage() {
               />
             </div>
             <div className="field">
+              <label htmlFor="department">Departamento / área</label>
+              <input
+                id="department"
+                value={form.department}
+                onChange={(event) => setForm({ ...form, department: event.target.value })}
+                placeholder="Comercial"
+              />
+            </div>
+            {form.type === "HUMAN" && (
+              <>
+                <div className="field">
+                  <label htmlFor="email">E-mail de contato</label>
+                  <input
+                    id="email"
+                    type="email"
+                    value={form.email}
+                    onChange={(event) => setForm({ ...form, email: event.target.value })}
+                    placeholder="pessoa@empresa.com"
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="phone">Telefone / WhatsApp</label>
+                  <input
+                    id="phone"
+                    type="tel"
+                    value={form.phone}
+                    onChange={(event) => setForm({ ...form, phone: event.target.value })}
+                    placeholder="(11) 99999-9999"
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="location">Local de trabalho</label>
+                  <input
+                    id="location"
+                    value={form.location}
+                    onChange={(event) => setForm({ ...form, location: event.target.value })}
+                    placeholder="São Paulo · Híbrido"
+                  />
+                </div>
+              </>
+            )}
+            <div className="field">
               <label htmlFor="type">Tipo</label>
               <select
                 id="type"
                 value={form.type}
-                onChange={(event) => setForm({ ...form, type: event.target.value as TeamMember["type"] })}
+                onChange={(event) => {
+                  const type = event.target.value as TeamMember["type"];
+                  setForm({ ...form, type, ...(type === "AI" ? { email: "", phone: "", location: "" } : {}) });
+                }}
               >
                 <option value="HUMAN">Pessoa</option>
                 <option value="AI">Agente de IA</option>
               </select>
             </div>
             <div className="field">
-              <label htmlFor="monthlyCost">Custo mensal (R$)</label>
+              <label htmlFor="monthlyCost">{form.type === "AI" ? "Custo mensal do agente (R$)" : "Custo mensal (R$)"}</label>
               <input
                 id="monthlyCost"
                 type="number"
@@ -241,49 +292,7 @@ export default function EquipePage() {
                 value={form.monthlyCost}
                 onChange={(event) => setForm({ ...form, monthlyCost: event.target.value })}
               />
-            </div>
-            <div className="field">
-              <label htmlFor="generatedValue">Valor gerado (R$)</label>
-              <input
-                id="generatedValue"
-                type="number"
-                min="0"
-                value={form.generatedValue}
-                onChange={(event) => setForm({ ...form, generatedValue: event.target.value })}
-                placeholder="12500"
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="performance">Desempenho (%)</label>
-              <input
-                id="performance"
-                type="number"
-                min="0"
-                max="100"
-                value={form.performance}
-                onChange={(event) => setForm({ ...form, performance: event.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="target">Meta (%)</label>
-              <input
-                id="target"
-                type="number"
-                min="0"
-                max="100"
-                value={form.target}
-                onChange={(event) => setForm({ ...form, target: event.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="roi">ROI (%)</label>
-              <input
-                id="roi"
-                type="number"
-                min="0"
-                value={form.roi}
-                onChange={(event) => setForm({ ...form, roi: event.target.value })}
-              />
+              <span className="small muted">Usado no financeiro e no cálculo automático do ROI.</span>
             </div>
             <button className="btn btn-primary" type="submit" disabled={saving}>
               {saving ? "Salvando..." : "Adicionar ao time"}
@@ -333,20 +342,48 @@ export default function EquipePage() {
                       </span>
                       <strong>{member.name}</strong>
                       <span>{member.role}</span>
+                      {member.department && <span className="member-department">{member.department}</span>}
                     </div>
                     <button className="icon-action danger" onClick={() => remove(member)} title="Remover">
                       <Trash2 size={14} />
                     </button>
                   </div>
 
-                  <div className="member-gauges">
-                    <Gauge value={member.performance} label="Desempenho" />
-                    <Gauge
-                      value={member.target ? (member.performance / member.target) * 100 : 0}
-                      label="Meta batida"
-                      color={member.performance >= member.target ? "#22c55e" : "#f5a524"}
-                    />
-                  </div>
+                  {member.type === "HUMAN" && (
+                    <div className="member-contact">
+                      <span><Mail size={13} />{member.email || "E-mail não informado"}</span>
+                      <span><Phone size={13} />{member.phone || "Telefone não informado"}</span>
+                      {member.location && <span><MapPin size={13} />{member.location}</span>}
+                    </div>
+                  )}
+
+                  {member.type === "HUMAN" && (
+                    <div className="member-next-task">
+                      <CalendarDays size={14} />
+                      {member.metrics.nextTaskTitle ? (
+                        <span><b>Próxima:</b> {member.metrics.nextTaskTitle} · {formatDate(member.metrics.nextTaskDueDate)}</span>
+                      ) : (
+                        <span>Sem tarefa pendente</span>
+                      )}
+                    </div>
+                  )}
+
+                  {member.type === "HUMAN" ? (
+                    <div className="member-gauges">
+                      {member.metrics.assignedTasks > 0 ? (
+                        <Gauge value={member.metrics.completionRate} label="Conclusão de tarefas" />
+                      ) : (
+                        <div className="member-auto-notice">Sem tarefas atribuídas</div>
+                      )}
+                      <div className="member-auto-metric">
+                        <span>ROI estimado</span>
+                        <strong>{member.metrics.roi == null ? "—" : `${member.metrics.roi}%`}</strong>
+                        <small>{brl(member.metrics.finalizedValue)} finalizados no mês</small>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="member-auto-notice">Indicadores de uso do agente ainda não são registrados.</div>
+                  )}
 
                   <div className="member-foot">
                     <Link className="member-open-link" href={profileHref}>
@@ -354,7 +391,6 @@ export default function EquipePage() {
                     </Link>
                     <span className={`pill ${verdict.tone}`}>{verdict.text}</span>
                     <b>{brl(member.monthlyCost)}</b>
-                    <b style={{ color: member.roi >= 100 ? "#4ade80" : "#f7b955" }}>{member.roi}%</b>
                   </div>
 
                   <button
@@ -398,30 +434,22 @@ export default function EquipePage() {
 
           <div className="card">
             <div className="card-head">
-              <h2>Economia com Agentes IA</h2>
+              <h2>Custos dos Agentes IA</h2>
             </div>
-            <div className="big-number" style={{ color: savings >= 0 ? "#4ade80" : "#ff8f7a" }}>
-              {brl(savings)}
-            </div>
+            <div className="big-number">{brl(agentCost)}</div>
             <p className="small muted" style={{ marginTop: 8 }}>
-              Valor gerado pelos agentes menos o custo mensal deles.
+              Custo mensal informado para os agentes ativos.
             </p>
             <div style={{ marginTop: 16 }}>
               <div className="list-item">
                 <div className="grow">
-                  <strong>Valor gerado</strong>
-                  <div className="bar green">
-                    <span style={{ width: `${agentValue ? 100 : 0}%` }} />
-                  </div>
+                  <strong>Agentes ativos</strong>
                 </div>
-                <b style={{ fontSize: 13 }}>{brl(agentValue)}</b>
+                <b style={{ fontSize: 13 }}>{activeAgents.length}</b>
               </div>
               <div className="list-item">
                 <div className="grow">
-                  <strong>Custo dos agentes</strong>
-                  <div className="bar amber">
-                    <span style={{ width: `${agentValue ? Math.min(100, (agentCost / agentValue) * 100) : 0}%` }} />
-                  </div>
+                  <strong>Custo mensal informado</strong>
                 </div>
                 <b style={{ fontSize: 13 }}>{brl(agentCost)}</b>
               </div>
@@ -480,14 +508,22 @@ export default function EquipePage() {
   );
 }
 
-/** Veredito do integrante calculado a partir de meta, desempenho e retorno. */
-function judge(member: TeamMember) {
-  if (member.performance < member.target) {
-    return { tone: "amber", text: `AVALIAR · ${percent(member.target - member.performance, 0)} abaixo da meta` };
-  }
-  if (member.roi >= 200) return { tone: "green", text: "SIM · Excelente ROI" };
-  if (member.roi >= 100) return { tone: "green", text: "SIM · Boa performance" };
-  return { tone: "blue", text: "OK · Dentro da meta" };
+function formatDate(value: string | null) {
+  if (!value) return "—";
+  const date = new Date(`${value.slice(0, 10)}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+}
+
+/** Sinaliza apenas o que pode ser observado nos registros atuais. */
+function judge(member: TeamMemberProfile) {
+  const { assignedTasks, completedTasks, completionRate, roi } = member.metrics;
+  if (member.type === "AI") return { tone: "blue", text: "USO NÃO RASTREADO" };
+  if (assignedTasks === 0) return { tone: "blue", text: "AGUARDANDO · Sem tarefas" };
+  if (completionRate < 100) return { tone: "amber", text: `${assignedTasks - completedTasks} tarefa(s) em aberto` };
+  if (roi === null) return { tone: "blue", text: "Custo mensal não informado" };
+  if (roi >= 200) return { tone: "green", text: "ROI acima de 200%" };
+  if (roi >= 100) return { tone: "green", text: "ROI acima de 100%" };
+  return { tone: "blue", text: "Tarefas concluídas" };
 }
 
 function SummaryCard({

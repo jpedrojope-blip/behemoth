@@ -31,12 +31,12 @@ function groupFor(name: string): Group {
   if (/cmv|custo da mercadoria|fornecedor|insumo|embalagem|compra para revenda/.test(v)) return "CMV";
   if (/salario|folha|fgts|pro.?labore|vale transporte|beneficio|rh\b/.test(v)) return "RH";
   if (/aluguel|luz|energia|agua|telefone|internet|contador|contabil|assessoria|administrativ/.test(v)) return "ADMINISTRATIVA";
-  if (/combustivel|design|maquininha|comissao|marketing|venda|frete/.test(v)) return "VENDAS";
+  if (/combustivel|design|maquininha|comissao|marketing|frete/.test(v)) return "VENDAS";
   if (/juros|tarifas? bancaria|taxas? bancaria|rendimento|aplicacao financeira|financeir/.test(v)) return "FINANCEIRA";
   if (/divida|aporte.*soci|dividendo|emprestimo|financiamento/.test(v)) return "FINANCIAMENTO";
   if (/investimento|equipamento|imobilizado|aquisicao/.test(v)) return "INVESTIMENTO";
   if (/nao operacional|extraordinari|indenizacao/.test(v)) return "NAO_OPERACIONAL";
-  if (/receita|venda|faturamento|revenda|delivery|recebimento|cliente/.test(v)) return "RECEITA";
+  if (/\bvd(?:[-\s]?\d+)?\b|receita|venda|faturamento|revenda|delivery|recebimento|cliente/.test(v)) return "RECEITA";
   return "OUTROS";
 }
 function fixedness(group: Group): Line["fixedness"] { return group === "CMV" || group === "IMPOSTO" ? "VARIAVEL" : group === "RH" || group === "ADMINISTRATIVA" ? "FIXO" : group === "VENDAS" ? "MISTO" : "NAO_CLASSIFICADO"; }
@@ -83,11 +83,13 @@ function transactions(text: string): ImportedTransaction[] {
   const datePattern = /(\d{2}[\/-]\d{2}[\/-]\d{4}|\d{4}-\d{2}-\d{2})/;
   return text.split(/\r?\n/).flatMap((raw) => {
     const date = raw.match(datePattern), values = raw.match(MONEY); if (!date || !values?.length) return [];
-    const parts = date[1].includes("-") ? date[1].split("-") : date[1].split(/[\/-]/).reverse(); const value = amount(values.at(-1) ?? ""); if (!Number.isFinite(value) || value === 0) return [];
+    const parsedDate = toIsoDate(date[1]);
+    const value = amount(values.at(-1) ?? "");
+    if (!parsedDate || !Number.isFinite(value) || value === 0) return [];
     const description = raw.replace(date[0], "").replace(MONEY, "").replace(/\s+/g, " ").trim() || "Lançamento importado";
     if (isAggregateName(description)) return [];
     const group = groupFor(description), kind = kindFor(description, value, group);
-    return [{ date: `${parts[0]}-${String(parts[1]).padStart(2, "0")}-${String(parts[2]).padStart(2, "0")}`, description, amount: Math.abs(value), kind, category: group === "RECEITA" ? "Receita" : group, financialReport: "BOTH" as const }];
+    return [{ date: parsedDate, description, amount: Math.abs(value), kind, category: group === "RECEITA" ? "Receita" : group, financialReport: "BOTH" as const }];
   }).slice(0, 10_000);
 }
 

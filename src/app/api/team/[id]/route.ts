@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { parseBody, teamUpdateSchema } from "@/lib/schemas";
 import { recordAudit } from "@/lib/store";
+import { teamMemberProfile } from "@/lib/team-metrics";
 import { withWorkspaceDatabase } from "@/lib/workspace-store";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ export async function GET(request: Request, context: Context) {
   return withWorkspaceDatabase(request, (db) => {
     const member = db.team.find((item) => item.id === id);
     if (!member) return NextResponse.json({ error: "Integrante não encontrado." }, { status: 404 });
-    return NextResponse.json(member);
+    return NextResponse.json(teamMemberProfile(db, member));
   });
 }
 
@@ -27,7 +28,7 @@ export async function PATCH(request: Request, context: Context) {
 
     Object.assign(member, parsed.data);
     recordAudit(db, "UPDATE", "team_member", member.id);
-    return NextResponse.json({ member });
+    return NextResponse.json({ member: teamMemberProfile(db, member) });
   });
 }
 
