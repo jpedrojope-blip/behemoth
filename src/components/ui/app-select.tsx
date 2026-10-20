@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown } from "lucide-react";
 
@@ -35,6 +35,31 @@ function readOptions(children: React.ReactNode): SelectOption[] {
     const value = child.props.value ?? (typeof label === "string" ? label : "");
     return [{ value: String(value), label, disabled: Boolean(child.props.disabled) }];
   });
+}
+
+function getMenuPosition(rect: DOMRect, menu: HTMLDivElement | null, optionCount: number): React.CSSProperties {
+  const width = Math.min(Math.max(rect.width, 220), window.innerWidth - 24);
+  const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
+  const contentHeight = Math.min(menu?.scrollHeight ?? 16 + optionCount * 44 + Math.max(0, optionCount - 1) * 6, 320);
+  const roomBelow = Math.max(0, window.innerHeight - rect.bottom - 12);
+  const roomAbove = Math.max(0, rect.top - 12);
+  const openAbove = contentHeight > roomBelow && roomAbove > roomBelow;
+  const availableHeight = openAbove ? roomAbove : roomBelow;
+  const maxHeight = Math.min(320, availableHeight);
+  const visibleHeight = Math.min(contentHeight, maxHeight);
+  const top = openAbove
+    ? Math.max(12, rect.top - visibleHeight - 8)
+    : Math.min(rect.bottom + 8, window.innerHeight - visibleHeight - 12);
+
+  return { position: "fixed", top, left, width, maxHeight, zIndex: 1600 };
+}
+
+function sameMenuPosition(current: React.CSSProperties | null, next: React.CSSProperties): boolean {
+  return current !== null
+    && Math.abs(Number(current.top) - Number(next.top)) < 1
+    && Math.abs(Number(current.left) - Number(next.left)) < 1
+    && Math.abs(Number(current.width) - Number(next.width)) < 1
+    && Math.abs(Number(current.maxHeight) - Number(next.maxHeight)) < 1;
 }
 
 export function AppSelect({
@@ -107,22 +132,22 @@ export function AppSelect({
     next?.focus();
   }
 
+  useLayoutEffect(() => {
+    if (!open || !menuStyle) return;
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const next = getMenuPosition(rect, menuRef.current, options.length);
+    setMenuStyle((current) => sameMenuPosition(current, next) ? current : next);
+  }, [menuStyle, open, options.length]);
+
   useEffect(() => {
     if (!open) return;
 
     const updateMenuPosition = () => {
       const rect = triggerRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const width = Math.min(Math.max(rect.width, 220), window.innerWidth - 24);
-      const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
-      const roomBelow = window.innerHeight - rect.bottom - 12;
-      const roomAbove = rect.top - 12;
-      const openAbove = roomBelow < 220 && roomAbove > roomBelow;
-      const maxHeight = Math.max(120, Math.min(320, openAbove ? roomAbove : roomBelow));
-      const top = openAbove
-        ? Math.max(12, rect.top - maxHeight - 8)
-        : Math.min(rect.bottom + 8, window.innerHeight - maxHeight - 12);
-      setMenuStyle({ position: "fixed", top, left, width, maxHeight, zIndex: 1600 });
+      const next = getMenuPosition(rect, menuRef.current, options.length);
+      setMenuStyle((current) => sameMenuPosition(current, next) ? current : next);
     };
 
     updateMenuPosition();
@@ -140,7 +165,7 @@ export function AppSelect({
       window.removeEventListener("resize", updateMenuPosition);
       window.removeEventListener("scroll", updateMenuPosition, true);
     };
-  }, [activeIndex, open]);
+  }, [activeIndex, open, options.length]);
 
   return (
     <div className="app-select" ref={rootRef}>
