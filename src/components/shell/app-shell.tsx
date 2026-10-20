@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { AppSelect } from "@/components/ui/app-select";
 import {
   Bell,
   Check,
@@ -284,7 +285,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
             <div className="niche-card compact-niche">
               <strong>Nicho</strong>
-              <select
+              <AppSelect
                 value={company?.niche ?? ""}
                 onChange={(event) => void patchCompany({ niche: event.target.value })}
                 aria-label="Nicho da empresa"
@@ -295,7 +296,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     {niche}
                   </option>
                 ))}
-              </select>
+              </AppSelect>
             </div>
           </div>
           <div className="sidebar-resizer" onPointerDown={resizeSidebar} role="separator" aria-label="Redimensionar menu lateral" />

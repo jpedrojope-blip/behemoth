@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { AppSelect } from "@/components/ui/app-select";
 import { Check, Plus, Save, Sparkles, Trash2, X } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, useResource } from "@/lib/client";
@@ -286,7 +287,7 @@ export default function ReunioesPage() {
                 </div>
                 <div className="field">
                   <label htmlFor="owner">Responsável</label>
-                  <select
+                  <AppSelect
                     id="owner"
                     value={newAction.owner}
                     onChange={(event) => setNewAction({ ...newAction, owner: event.target.value })}
@@ -297,7 +298,7 @@ export default function ReunioesPage() {
                         {person}
                       </option>
                     ))}
-                  </select>
+                  </AppSelect>
                 </div>
                 <div className="field">
                   <label htmlFor="due">Prazo</label>

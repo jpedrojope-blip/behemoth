@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AppSelect } from "@/components/ui/app-select";
 import { Camera, CircleAlert, CircleCheck, Database, RotateCcw, Save, Trash2 } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, useResource } from "@/lib/client";
@@ -303,7 +304,7 @@ export default function ConfiguracoesPage() {
             </div>
             <div className="field">
               <label htmlFor="plan">Plano</label>
-              <select
+              <AppSelect
                 id="plan"
                 value={form.plan ?? "Pro"}
                 onChange={(event) => setForm({ ...form, plan: event.target.value })}
@@ -311,11 +312,11 @@ export default function ConfiguracoesPage() {
                 <option>Basic</option>
                 <option>Pro</option>
                 <option>Enterprise</option>
-              </select>
+              </AppSelect>
             </div>
             <div className="field">
               <label htmlFor="ownerRole">Permissão</label>
-              <select
+              <AppSelect
                 id="ownerRole"
                 value={form.ownerRole ?? "ADMIN"}
                 onChange={(event) => setForm({ ...form, ownerRole: event.target.value as Role })}
@@ -323,7 +324,7 @@ export default function ConfiguracoesPage() {
                 <option value="ADMIN">Administrador</option>
                 <option value="MANAGER">Gestor</option>
                 <option value="MEMBER">Membro</option>
-              </select>
+              </AppSelect>
             </div>
             <div className="field">
               <label htmlFor="cashOpeningBalance">Saldo inicial de caixa (R$)</label>

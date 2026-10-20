@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { AppSelect } from "@/components/ui/app-select";
 import {
   BadgeDollarSign,
   CalendarDays,
   Check,
-  ChevronDown,
   Coins,
   FileSpreadsheet,
   FileText,
@@ -135,6 +135,7 @@ export default function FinanceiroPage() {
   const importDialogRef = useRef<HTMLDialogElement>(null);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [processingPdf, setProcessingPdf] = useState(false);
+  const [pdfReadDone, setPdfReadDone] = useState(false);
   const [savingImport, setSavingImport] = useState(false);
   const [pdfImportDone, setPdfImportDone] = useState(false);
   const [pdfTransactions, setPdfTransactions] = useState<ImportTransaction[]>([]);
@@ -199,6 +200,7 @@ export default function FinanceiroPage() {
   async function processFinancialFile(fileToProcess = pdfFile) {
     if (!fileToProcess) return;
     setProcessingPdf(true);
+    setPdfReadDone(false);
     setPdfImportDone(false);
     setPdfTransactions([]);
     setImportIds([]);
@@ -216,6 +218,7 @@ export default function FinanceiroPage() {
       setImportIds(identifiers);
       setCompletedImportChunks(0);
       setPdfAnalysis(payload.analysis ?? null);
+      setPdfReadDone(true);
       notify(extracted.length ? `${extracted.length} lançamento(s) encontrados. Confira a prévia e confirme a importação.` : "O arquivo foi lido, mas não tem lançamentos detalhados com data para importar.", extracted.length ? "success" : "error");
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Erro ao ler o arquivo.";
@@ -232,6 +235,7 @@ export default function FinanceiroPage() {
     setImportIds([]);
     setCompletedImportChunks(0);
     setPdfAnalysis(null);
+    setPdfReadDone(false);
     setPdfImportDone(false);
     setImportError("");
   }
@@ -317,6 +321,43 @@ export default function FinanceiroPage() {
   const costIndex = revenue ? (costs / revenue) * 100 : 0;
   const importBatchCount = Math.ceil(pdfTransactions.length / IMPORT_BATCH_SIZE);
   const importProgress = importBatchCount ? Math.round((completedImportChunks / importBatchCount) * 100) : 0;
+  const importFileExtension = pdfFile?.name.toLowerCase().split(".").pop();
+  const importFileSize = pdfFile
+    ? pdfFile.size < 1024 * 1024
+      ? `${Math.max(1, Math.round(pdfFile.size / 1024))} KB`
+      : `${(pdfFile.size / (1024 * 1024)).toFixed(1)} MB`
+    : "";
+  const importFileState = savingImport
+    ? "Importando"
+    : processingPdf
+      ? "Lendo arquivo"
+      : pdfImportDone
+        ? "Concluído"
+        : importError
+          ? "Falha na leitura"
+          : pdfReadDone
+            ? "Leitura concluída"
+            : "Selecionado";
+  const importFileDetail = savingImport
+    ? `${importProgress}% dos lançamentos salvos`
+    : processingPdf
+      ? "Organizando os dados para a prévia"
+      : pdfImportDone
+        ? "Lançamentos adicionados ao relatório"
+        : importError
+          ? "Confira a mensagem abaixo"
+          : pdfReadDone
+            ? pdfTransactions.length
+              ? `${pdfTransactions.length} lançamento(s) encontrados · revise abaixo`
+              : "Nenhum lançamento detalhado encontrado"
+            : "A leitura começará em instantes";
+  const importFileStateClass = savingImport || processingPdf
+    ? "is-processing"
+    : importError
+      ? "is-error"
+      : pdfReadDone
+        ? "is-complete"
+        : "is-ready";
 
   return (
     <div className="page-wrap financial-page">
@@ -328,14 +369,13 @@ export default function FinanceiroPage() {
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <div className="period-select">
             <CalendarDays size={16} />
-            <select value={period} onChange={(event) => setPeriod(event.target.value as Period)}>
+            <AppSelect aria-label="Período do relatório" value={period} onChange={(event) => setPeriod(event.target.value as Period)}>
               {Object.entries(PERIOD_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
               ))}
-            </select>
-            <ChevronDown size={15} />
+            </AppSelect>
           </div>
           {activeTab === "report" && <details className="view-options">
             <summary className="btn btn-ghost"><SlidersHorizontal size={15} /> Personalizar visão</summary>
@@ -402,10 +442,11 @@ export default function FinanceiroPage() {
             <small>Até 10 MB por arquivo</small>
           </div>
           <label
-            className={`pdf-dropzone ${isDraggingFile ? "is-dragging" : ""} ${pdfFile ? "has-file" : ""}`}
+            className={`pdf-dropzone ${isDraggingFile ? "is-dragging" : ""} ${processingPdf || savingImport ? "is-busy" : ""}`}
             htmlFor="financial-pdf"
             onDragEnter={(event) => {
               event.preventDefault();
+              if (processingPdf || savingImport) return;
               setIsDraggingFile(true);
             }}
             onDragOver={(event) => event.preventDefault()}
@@ -415,15 +456,19 @@ export default function FinanceiroPage() {
             onDrop={(event) => {
               event.preventDefault();
               setIsDraggingFile(false);
+              if (processingPdf || savingImport) return;
               chooseFinancialFile(event.dataTransfer.files[0]);
             }}
           >
             <span className="pdf-dropzone-icon"><Upload size={22} /></span>
-            <strong>{pdfFile ? pdfFile.name : "Selecione ou arraste PDF, Excel ou Word aqui"}</strong>
-            <span>{pdfFile ? `${(pdfFile.size / 1024 / 1024).toFixed(2)} MB · ${processingPdf ? "lendo arquivo..." : "pronto para analisar"}` : "Clique para escolher um arquivo ou arraste-o até aqui"}</span>
+            <strong>Arraste o arquivo até aqui</strong>
+            <span>ou selecione um documento no seu dispositivo</span>
+            <span className="pdf-dropzone-action"><Upload size={15} /> Selecionar arquivo</span>
             <input
               id="financial-pdf"
               type="file"
+              aria-label="Selecionar arquivo financeiro"
+              disabled={processingPdf || savingImport}
               accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.ms-excel,.xls,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               onChange={(event) => {
                 chooseFinancialFile(event.target.files?.[0]);
@@ -431,19 +476,41 @@ export default function FinanceiroPage() {
               }}
             />
           </label>
+          {pdfFile && (
+            <div className={`pdf-selected-file ${importFileStateClass}`} role="group" aria-label={`Arquivo selecionado: ${pdfFile.name}`}>
+              <span className="pdf-selected-file-icon" aria-hidden="true">
+                {importFileExtension === "xlsx" || importFileExtension === "xls" ? <FileSpreadsheet size={20} /> : <FileText size={20} />}
+              </span>
+              <div className="pdf-selected-file-copy">
+                <strong title={pdfFile.name}>{pdfFile.name}</strong>
+                <span>{importFileSize} <i aria-hidden="true">·</i> {importFileDetail}</span>
+              </div>
+              <div className="pdf-selected-file-controls">
+                <span className="pdf-selected-file-state" role="status" aria-live="polite">{importFileState}</span>
+                <button
+                  className="pdf-selected-file-remove"
+                  type="button"
+                  aria-label={`Remover ${pdfFile.name}`}
+                  disabled={processingPdf || savingImport}
+                  onClick={clearImportPreview}
+                >
+                  <X size={17} />
+                </button>
+              </div>
+            </div>
+          )}
           <div className="pdf-import-actions">
             <button className="btn btn-primary" disabled={!pdfFile || processingPdf || savingImport || pdfImportDone} onClick={() => void processFinancialFile()}>
-              {processingPdf ? "Lendo arquivo..." : pdfAnalysis ? "Ler novamente" : "Ler arquivo"}
+              {processingPdf ? "Lendo arquivo..." : pdfReadDone ? "Ler novamente" : "Ler arquivo"}
             </button>
             {pdfTransactions.length > 0 && !pdfImportDone && <button className="btn btn-primary" disabled={savingImport} onClick={confirmImport}>
               {savingImport ? "Importando..." : `Confirmar ${pdfTransactions.length} lançamento(s)`}
             </button>}
-            {pdfFile && <button className="btn btn-ghost" onClick={clearImportPreview}>Remover arquivo</button>}
           </div>
           <div className="import-flow" aria-label="Etapas da importação">
-            <span className={pdfFile ? "done" : ""}>1. Arquivo</span>
-            <span className={pdfTransactions.length || pdfAnalysis ? "done" : ""}>2. Prévia</span>
-            <span className={pdfImportDone ? "done" : ""}>3. Confirmar</span>
+            <span className={pdfFile ? "done" : ""} data-step="1">Arquivo</span>
+            <span className={pdfTransactions.length || pdfAnalysis ? "done" : ""} data-step="2">Prévia</span>
+            <span className={pdfImportDone ? "done" : ""} data-step="3">Confirmar</span>
           </div>
           <div className="import-status" role="status" aria-live="polite">
             {processingPdf && "Lendo o arquivo e organizando os lançamentos..."}
@@ -719,19 +786,19 @@ export default function FinanceiroPage() {
         <div className="section-head">
           <h2>Lançamentos</h2>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <select className="btn btn-ghost" value={kind} onChange={(event) => setKind(event.target.value)}>
+            <AppSelect className="btn btn-ghost" value={kind} onChange={(event) => setKind(event.target.value)}>
               <option value="todos">Todos os tipos</option>
               <option value="INCOME">Receitas</option>
               <option value="EXPENSE">Despesas</option>
-            </select>
-            <select className="btn btn-ghost" value={category} onChange={(event) => setCategory(event.target.value)}>
+            </AppSelect>
+            <AppSelect className="btn btn-ghost" value={category} onChange={(event) => setCategory(event.target.value)}>
               <option value="todas">Todas as categorias</option>
               {(data?.categories ?? []).map((item) => (
                 <option key={item} value={item}>
                   {item}
                 </option>
               ))}
-            </select>
+            </AppSelect>
           </div>
         </div>
 
@@ -762,14 +829,14 @@ export default function FinanceiroPage() {
               </div>
               <div className="field">
                 <label htmlFor="kind">Tipo</label>
-                <select
+                <AppSelect
                   id="kind"
                   value={form.kind}
                   onChange={(event) => setForm({ ...form, kind: event.target.value as Transaction["kind"] })}
                 >
                   <option value="INCOME">Receita</option>
                   <option value="EXPENSE">Despesa</option>
-                </select>
+                </AppSelect>
               </div>
               <div className="field">
                 <label htmlFor="category">Categoria</label>
@@ -806,7 +873,7 @@ export default function FinanceiroPage() {
               </div>
               <div className="field">
                 <label htmlFor="financialReport">Entra em</label>
-                <select
+                <AppSelect
                   id="financialReport"
                   value={form.financialReport}
                   onChange={(event) => setForm({ ...form, financialReport: event.target.value as NonNullable<Transaction["financialReport"]> })}
@@ -814,11 +881,11 @@ export default function FinanceiroPage() {
                   <option value="BOTH">DRE e fluxo de caixa</option>
                   <option value="DRE">Somente DRE</option>
                   <option value="DFC">Somente fluxo de caixa</option>
-                </select>
+                </AppSelect>
               </div>
               <div className="field" hidden={form.kind !== "EXPENSE"}>
                 <label htmlFor="costBehavior">Tipo de gasto</label>
-                <select
+                <AppSelect
                   id="costBehavior"
                   value={form.costBehavior}
                   onChange={(event) => setForm({ ...form, costBehavior: event.target.value as NonNullable<Transaction["costBehavior"]> })}
@@ -826,22 +893,22 @@ export default function FinanceiroPage() {
                   <option value="AUTO">Automático pela categoria</option>
                   <option value="FIXED">Gasto fixo</option>
                   <option value="VARIABLE">Gasto variável</option>
-                </select>
+                </AppSelect>
               </div>
               <div className="field">
                 <label htmlFor="status">Situação</label>
-                <select
+                <AppSelect
                   id="status"
                   value={form.status}
                   onChange={(event) => setForm({ ...form, status: event.target.value as Transaction["status"] })}
                 >
                   <option value="CONFIRMED">Confirmado</option>
                   <option value="PENDING">Pendente</option>
-                </select>
+                </AppSelect>
               </div>
               <div className="field">
                 <label htmlFor="recurrence">Repetição</label>
-                <select
+                <AppSelect
                   id="recurrence"
                   value={form.recurrence}
                   onChange={(event) =>
@@ -850,7 +917,7 @@ export default function FinanceiroPage() {
                 >
                   <option value="NONE">Único</option>
                   <option value="MONTHLY">Todo mês</option>
-                </select>
+                </AppSelect>
               </div>
               <button className="btn btn-primary" type="submit" disabled={saving}>
                 {saving ? "Salvando..." : "Salvar lançamento"}

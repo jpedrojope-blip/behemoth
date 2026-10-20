@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { AppSelect } from "@/components/ui/app-select";
 import {
   ArrowUpRight,
   BadgeDollarSign,
@@ -146,14 +147,13 @@ export default function DashboardPage() {
         <div className="dashboard-head-actions">
           <div className="period-select">
             <CalendarDays size={16} />
-            <select value={period} onChange={(event) => setPeriod(event.target.value as Period)}>
+            <AppSelect aria-label="Período do painel" value={period} onChange={(event) => setPeriod(event.target.value as Period)}>
               {Object.entries(PERIOD_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
               ))}
-            </select>
-            <ChevronDown size={15} />
+            </AppSelect>
           </div>
           <details className="view-options">
             <summary className="btn btn-ghost"><SlidersHorizontal size={15} /> Personalizar visão</summary>

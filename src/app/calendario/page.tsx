@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Filter, Plus, Trash2, X, Zap } from "lucide-react";
+import { AppSelect } from "@/components/ui/app-select";
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Filter, Plus, Trash2, X, Zap } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, useResource } from "@/lib/client";
 import { brl, shortDate } from "@/lib/format";
@@ -165,15 +166,14 @@ export default function CalendarioPage() {
         <div className="calendar-page-actions">
           <label className="calendar-control">
             <Filter size={15} aria-hidden="true" />
-            <select aria-label="Filtrar compromissos por tipo" value={kindFilter} onChange={(event) => setKindFilter(event.target.value as typeof kindFilter)}>
+            <AppSelect aria-label="Filtrar compromissos por tipo" value={kindFilter} onChange={(event) => setKindFilter(event.target.value as typeof kindFilter)}>
               <option value="ALL">Todos os tipos</option>
               {Object.entries(KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-            <ChevronDown size={14} aria-hidden="true" />
+            </AppSelect>
           </label>
           <label className="calendar-control calendar-month-select">
             <CalendarDays size={15} aria-hidden="true" />
-            <select
+            <AppSelect
               aria-label="Escolher mês"
               value={month}
               onChange={(event) => {
@@ -186,8 +186,7 @@ export default function CalendarioPage() {
                   {option.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
                 </option>
               ))}
-            </select>
-            <ChevronDown size={14} aria-hidden="true" />
+            </AppSelect>
           </label>
         <button
           className="btn btn-primary"
@@ -248,7 +247,7 @@ export default function CalendarioPage() {
             </div>
             <div className="field">
               <label htmlFor="kind">Tipo</label>
-              <select
+              <AppSelect
                 id="kind"
                 value={form.kind}
                 onChange={(event) => setForm({ ...form, kind: event.target.value as CalendarEvent["kind"] })}
@@ -258,11 +257,11 @@ export default function CalendarioPage() {
                     {label}
                   </option>
                 ))}
-              </select>
+              </AppSelect>
             </div>
             <div className="field">
               <label htmlFor="owner">Responsável</label>
-              <select
+              <AppSelect
                 id="owner"
                 value={form.owner}
                 onChange={(event) => setForm({ ...form, owner: event.target.value })}
@@ -273,7 +272,7 @@ export default function CalendarioPage() {
                     {person}
                   </option>
                 ))}
-              </select>
+              </AppSelect>
             </div>
             {form.kind === "PAYMENT" && (
               <div className="field">

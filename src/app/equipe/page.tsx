@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AppSelect } from "@/components/ui/app-select";
 import Link from "next/link";
 import {
   Bot,
@@ -271,7 +272,7 @@ export default function EquipePage() {
             )}
             <div className="field">
               <label htmlFor="type">Tipo</label>
-              <select
+              <AppSelect
                 id="type"
                 value={form.type}
                 onChange={(event) => {
@@ -281,7 +282,7 @@ export default function EquipePage() {
               >
                 <option value="HUMAN">Pessoa</option>
                 <option value="AI">Agente de IA</option>
-              </select>
+              </AppSelect>
             </div>
             <div className="field">
               <label htmlFor="monthlyCost">{form.type === "AI" ? "Custo mensal do agente (R$)" : "Custo mensal (R$)"}</label>

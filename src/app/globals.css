@@ -6965,3 +6965,586 @@ textarea:focus {
   .pdf-import-formats { gap: 6px; }
   .pdf-import-formats small { width: 100%; margin-left: 0; }
 }
+
+/* Upload dropzone and selected-file row follow Behemoth's light glass treatment. */
+.pdf-dropzone {
+  min-height: 166px;
+  gap: 8px;
+  padding: 22px;
+  border-radius: 18px;
+}
+
+.pdf-dropzone-action {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 5px;
+  padding: 9px 13px;
+  border: 1px solid rgba(52, 109, 208, 0.24);
+  border-radius: 10px;
+  color: var(--blue) !important;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 3px 10px rgba(38, 91, 170, 0.06);
+  font-size: 12px !important;
+  font-weight: 700;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.pdf-dropzone:hover .pdf-dropzone-action {
+  border-color: rgba(37, 99, 235, 0.4);
+  background: #fff;
+  transform: translateY(-1px);
+}
+
+.pdf-dropzone.is-busy {
+  cursor: progress;
+  opacity: 0.78;
+}
+
+.pdf-dropzone.is-busy .pdf-dropzone-action {
+  transform: none;
+}
+
+.pdf-selected-file {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 5px 16px rgba(31, 64, 112, 0.05);
+}
+
+.pdf-selected-file-icon {
+  display: grid;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 12px;
+  color: var(--blue);
+  background: var(--surface-2);
+}
+
+.pdf-selected-file-copy {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pdf-selected-file-copy strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pdf-selected-file-copy span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.pdf-selected-file-copy i {
+  padding: 0 3px;
+  font-style: normal;
+}
+
+.pdf-selected-file-controls {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 9px;
+}
+
+.pdf-selected-file-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 999px;
+  color: var(--blue);
+  background: rgba(232, 241, 255, 0.72);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pdf-selected-file-state::before {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
+.pdf-selected-file.is-processing .pdf-selected-file-state {
+  border-color: rgba(37, 99, 235, 0.2);
+  color: #2464d5;
+  background: #edf4ff;
+}
+
+.pdf-selected-file.is-complete .pdf-selected-file-state {
+  border-color: rgba(24, 155, 102, 0.2);
+  color: #087749;
+  background: #eaf9f1;
+}
+
+.pdf-selected-file.is-error .pdf-selected-file-state {
+  border-color: rgba(220, 76, 89, 0.22);
+  color: #b42332;
+  background: #fff0f1;
+}
+
+.pdf-selected-file-remove {
+  display: grid;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  color: var(--ink-dim);
+  background: transparent;
+  cursor: pointer;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.pdf-selected-file-remove:hover:not(:disabled) {
+  border-color: rgba(220, 76, 89, 0.25);
+  color: #b42332;
+  background: #fff0f1;
+}
+
+.pdf-selected-file-remove:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.3);
+  outline-offset: 2px;
+}
+
+.pdf-selected-file-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.import-flow span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 6px 9px;
+  border-radius: 11px;
+}
+
+.import-flow span::before {
+  display: grid;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--muted);
+  background: var(--surface-2);
+  content: attr(data-step);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.import-flow span.done::before {
+  color: #fff;
+  background: var(--blue);
+}
+
+:root:not([data-theme="dark"]) .pdf-selected-file {
+  border-color: rgba(83, 120, 178, 0.2);
+  background: linear-gradient(145deg, #fff, #f6f9ff);
+}
+
+:root:not([data-theme="dark"]) .pdf-selected-file-icon {
+  border-color: rgba(37, 99, 235, 0.12);
+  color: #2469e8;
+  background: linear-gradient(145deg, #edf4ff, #e4efff);
+}
+
+:root:not([data-theme="dark"]) .pdf-selected-file-copy strong {
+  color: #183153;
+}
+
+:root:not([data-theme="dark"]) .pdf-selected-file-copy span {
+  color: #617794;
+}
+
+:root:not([data-theme="dark"]) .import-flow span::before {
+  color: #617794;
+  background: #edf2fa;
+}
+
+:root[data-theme="dark"] .pdf-dropzone-action {
+  border-color: rgba(133, 174, 239, 0.28);
+  color: #c7dcff !important;
+  background: rgba(18, 39, 72, 0.9);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+}
+
+:root[data-theme="dark"] .pdf-dropzone:hover .pdf-dropzone-action {
+  border-color: rgba(133, 174, 239, 0.5);
+  background: #18345e;
+}
+
+:root[data-theme="dark"] .pdf-selected-file {
+  border-color: rgba(139, 174, 224, 0.24);
+  background: linear-gradient(145deg, #142947, #10223e);
+}
+
+:root[data-theme="dark"] .pdf-selected-file-icon {
+  border-color: rgba(113, 159, 229, 0.26);
+  color: #94baff;
+  background: #19345c;
+}
+
+:root[data-theme="dark"] .pdf-selected-file-copy strong {
+  color: #eef5ff;
+}
+
+:root[data-theme="dark"] .pdf-selected-file-copy span {
+  color: #b0c2dc;
+}
+
+:root[data-theme="dark"] .pdf-selected-file-state {
+  border-color: rgba(106, 153, 225, 0.3);
+  color: #b9d1ff;
+  background: rgba(41, 76, 131, 0.44);
+}
+
+:root[data-theme="dark"] .pdf-selected-file.is-complete .pdf-selected-file-state {
+  border-color: rgba(69, 195, 138, 0.32);
+  color: #80e0b4;
+  background: rgba(16, 109, 79, 0.25);
+}
+
+:root[data-theme="dark"] .pdf-selected-file.is-error .pdf-selected-file-state {
+  border-color: rgba(235, 113, 121, 0.34);
+  color: #ffafb5;
+  background: rgba(139, 40, 52, 0.28);
+}
+
+:root[data-theme="dark"] .pdf-selected-file-remove:hover:not(:disabled) {
+  border-color: rgba(235, 113, 121, 0.4);
+  color: #ffafb5;
+  background: rgba(139, 40, 52, 0.35);
+}
+
+@media (max-width: 560px) {
+  .pdf-dropzone { min-height: 154px; padding: 18px 12px; }
+  .pdf-selected-file { align-items: flex-start; gap: 9px; padding: 10px; }
+  .pdf-selected-file-icon { flex-basis: 38px; width: 38px; height: 38px; }
+  .pdf-selected-file-controls { gap: 6px; }
+  .pdf-selected-file-state { max-width: 110px; padding: 4px 7px; font-size: 9px; }
+  .import-flow { gap: 5px; }
+  .import-flow span { flex-direction: column; gap: 4px; min-height: 52px; padding: 7px 4px; font-size: 10px; }
+}
+
+/* Shared branded dropdowns used in forms, filters and compact selectors. */
+.app-select {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.app-select-native {
+  position: absolute !important;
+  width: 1px !important;
+  min-width: 0 !important;
+  max-width: 1px !important;
+  height: 1px !important;
+  min-height: 0 !important;
+  max-height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.app-select-trigger {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 13px;
+  border: 1px solid rgba(89, 136, 219, 0.28);
+  border-radius: 14px;
+  color: var(--ink);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.84), rgba(227, 239, 255, 0.7));
+  box-shadow: var(--glass-highlight), 0 8px 20px rgba(57, 98, 167, 0.1);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 180ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.app-select-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-select-trigger > svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+  transition: transform 160ms ease;
+}
+
+.app-select-trigger[aria-expanded="true"] > svg { transform: rotate(180deg); }
+
+.app-select-trigger:hover:not(:disabled),
+.app-select-trigger[aria-expanded="true"] {
+  border-color: rgba(31, 102, 240, 0.5);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(232, 241, 255, 0.86));
+  box-shadow: var(--glass-highlight), 0 12px 26px rgba(32, 98, 224, 0.16);
+  transform: translateY(-1px);
+}
+
+.app-select-trigger:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.28);
+  outline-offset: 2px;
+}
+
+.app-select-trigger:disabled { cursor: not-allowed; opacity: 0.58; }
+
+.app-select-trigger.btn {
+  width: auto;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.app-select-menu {
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.86);
+  border-radius: 16px;
+  color: var(--ink);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.97), rgba(225, 238, 255, 0.95));
+  box-shadow: 0 22px 48px rgba(32, 66, 120, 0.24), var(--glass-highlight);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  overscroll-behavior: contain;
+  animation: app-select-enter 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes app-select-enter {
+  from { opacity: 0; transform: translateY(-5px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.app-select-options { display: grid; gap: 6px; }
+
+.app-select-option {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid rgba(94, 134, 194, 0.16);
+  border-radius: 12px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.52);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+.app-select-option:hover:not(:disabled),
+.app-select-option:focus-visible {
+  border-color: rgba(35, 107, 243, 0.48);
+  background: rgba(255, 255, 255, 0.88);
+  outline: none;
+  transform: translateX(2px);
+}
+
+.app-select-option.selected {
+  border-color: rgba(36, 111, 247, 0.42);
+  background: linear-gradient(135deg, rgba(220, 233, 255, 0.92), rgba(241, 247, 255, 0.9));
+  color: #144da8;
+  font-weight: 700;
+}
+
+.app-select-option > svg { flex: 0 0 auto; color: var(--blue); }
+.app-select-option:disabled { cursor: not-allowed; opacity: 0.5; }
+.app-select-empty { margin: 8px; color: var(--muted); font-size: 12px; }
+
+.field > .app-select,
+.niche-card > .app-select,
+.workflow-form-grid > .app-select { width: 100%; }
+
+.field .app-select-trigger { min-height: 43px; }
+
+.period-select > .app-select,
+.select-small > .app-select { flex: 1 1 auto; }
+
+.period-select .app-select-trigger,
+.select-small .app-select-trigger {
+  min-height: 40px;
+  padding: 8px 4px;
+  border: 0;
+  background: transparent;
+}
+
+.period-select .app-select-trigger:hover:not(:disabled),
+.select-small .app-select-trigger:hover:not(:disabled) {
+  background: transparent;
+  box-shadow: none;
+}
+
+.calendar-control > .app-select { width: 132px; }
+.calendar-month-select > .app-select { width: 110px; }
+
+.calendar-control .app-select-trigger {
+  min-height: 36px;
+  padding: 5px 8px;
+  border: 0;
+  background: transparent;
+}
+
+.workflow-filter > .app-select { max-width: 190px; }
+.workflow-filter .app-select-trigger,
+.workflow-card-move .app-select-trigger { min-height: 34px; padding: 7px 9px; }
+.workflow-card-move > .app-select { flex: 1 1 auto; }
+.workflow-form-grid .app-select-trigger { min-height: 42px; }
+
+:root:not([data-theme="dark"]) .app-select-trigger {
+  border-color: rgba(82, 122, 184, 0.25);
+  color: #1c365b;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.84), rgba(227, 239, 255, 0.7));
+}
+
+:root:not([data-theme="dark"]) .app-select-trigger:hover:not(:disabled),
+:root:not([data-theme="dark"]) .app-select-trigger[aria-expanded="true"] {
+  border-color: rgba(37, 99, 235, 0.5);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(232, 241, 255, 0.86));
+}
+
+:root:not([data-theme="dark"]) .app-select-menu {
+  border-color: rgba(255, 255, 255, 0.92);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(228, 239, 255, 0.96));
+}
+
+:root:not([data-theme="dark"]) .app-select-option {
+  border-color: rgba(94, 134, 194, 0.17);
+  color: #173052;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+:root:not([data-theme="dark"]) .app-select-option.selected {
+  color: #144da8;
+  background: linear-gradient(135deg, #e5efff, #f5f8ff);
+}
+
+:root[data-theme="dark"] .app-select-trigger {
+  border-color: var(--line);
+  color: var(--ink);
+  background: linear-gradient(145deg, rgba(20, 39, 68, 0.9), rgba(8, 20, 39, 0.78));
+  box-shadow: inset 0 1px 0 rgba(200, 220, 255, 0.08), 0 8px 20px rgba(0, 0, 0, 0.18);
+}
+
+:root[data-theme="dark"] .app-select-trigger:hover:not(:disabled),
+:root[data-theme="dark"] .app-select-trigger[aria-expanded="true"] {
+  border-color: rgba(83, 142, 255, 0.62);
+  background: linear-gradient(145deg, rgba(29, 57, 98, 0.96), rgba(13, 30, 56, 0.94));
+}
+
+:root[data-theme="dark"] .app-select-menu {
+  border-color: rgba(141, 176, 229, 0.22);
+  background: linear-gradient(145deg, rgba(19, 38, 67, 0.98), rgba(11, 25, 47, 0.98));
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(200, 220, 255, 0.08);
+}
+
+:root[data-theme="dark"] .app-select-option {
+  border-color: rgba(141, 176, 229, 0.16);
+  color: #e7f0ff;
+  background: rgba(15, 34, 62, 0.8);
+}
+
+:root[data-theme="dark"] .app-select-option:hover:not(:disabled),
+:root[data-theme="dark"] .app-select-option:focus-visible {
+  border-color: rgba(83, 142, 255, 0.52);
+  background: rgba(29, 57, 98, 0.92);
+}
+
+:root[data-theme="dark"] .app-select-option.selected {
+  border-color: rgba(83, 142, 255, 0.62);
+  color: #d6e6ff;
+  background: linear-gradient(135deg, rgba(35, 76, 139, 0.88), rgba(22, 48, 87, 0.92));
+}
+
+:root[data-theme="dark"] .period-select .app-select-trigger,
+:root[data-theme="dark"] .select-small .app-select-trigger,
+:root[data-theme="dark"] .calendar-control .app-select-trigger {
+  border-color: transparent;
+  background: transparent;
+}
+
+:root:not([data-theme="dark"]) .period-select .app-select-trigger,
+:root:not([data-theme="dark"]) .select-small .app-select-trigger,
+:root:not([data-theme="dark"]) .calendar-control .app-select-trigger {
+  border-color: transparent;
+  background: transparent;
+}
+
+:root:not([data-theme="dark"]) .period-select .app-select-trigger:hover:not(:disabled),
+:root:not([data-theme="dark"]) .select-small .app-select-trigger:hover:not(:disabled),
+:root:not([data-theme="dark"]) .calendar-control .app-select-trigger:hover:not(:disabled) {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .period-select .app-select-trigger:hover:not(:disabled),
+:root[data-theme="dark"] .select-small .app-select-trigger:hover:not(:disabled),
+:root[data-theme="dark"] .calendar-control .app-select-trigger:hover:not(:disabled) {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+@media (max-width: 560px) {
+  .app-select-menu { max-width: calc(100vw - 24px); }
+  .calendar-control > .app-select { width: 105px; }
+  .calendar-month-select > .app-select { width: 88px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-select-menu,
+  .app-select-trigger,
+  .app-select-option { animation: none; transition: none; }
+  .app-select-option:hover:not(:disabled) { transform: none; }
+}

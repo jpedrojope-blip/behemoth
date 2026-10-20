@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AppSelect } from "@/components/ui/app-select";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, Bot, CalendarDays, ListTodo, Save, UserRound } from "lucide-react";
@@ -254,20 +255,20 @@ export default function TeamMemberPage() {
             )}
             <div className="field">
               <label htmlFor="profile-type">Tipo</label>
-              <select id="profile-type" value={form.type} onChange={(event) => {
+              <AppSelect id="profile-type" value={form.type} onChange={(event) => {
                 const type = event.target.value as TeamMember["type"];
                 setForm({ ...form, type, ...(type === "AI" ? { email: "", phone: "", location: "" } : {}) });
               }}>
                 <option value="HUMAN">Pessoa</option>
                 <option value="AI">Agente de IA</option>
-              </select>
+              </AppSelect>
             </div>
             <div className="field">
               <label htmlFor="profile-status">Situação</label>
-              <select id="profile-status" value={form.status} onChange={(event) => updateForm("status", event.target.value as TeamMember["status"])}>
+              <AppSelect id="profile-status" value={form.status} onChange={(event) => updateForm("status", event.target.value as TeamMember["status"])}>
                 <option value="ACTIVE">Ativo</option>
                 <option value="REVIEW">Em revisão</option>
-              </select>
+              </AppSelect>
             </div>
             <div className="field">
               <label htmlFor="profile-cost">{form.type === "AI" ? "Custo mensal do agente (R$)" : "Custo mensal (R$)"}</label>
