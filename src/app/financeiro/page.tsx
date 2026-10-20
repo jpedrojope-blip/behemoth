@@ -7,6 +7,7 @@ import {
   Check,
   ChevronDown,
   Coins,
+  FileSpreadsheet,
   FileText,
   Upload,
   Plus,
@@ -382,17 +383,26 @@ export default function FinanceiroPage() {
       >
         <section className="pdf-import-card" aria-busy={processingPdf || savingImport}>
           <div className="pdf-import-modal-head">
-            <div>
-              <p className="card-kicker">IMPORTAÇÃO DE DADOS</p>
-              <h2 id="financial-import-title">Importe dados financeiros</h2>
-              <p className="small muted">Envie um PDF, Excel ou Word. A Behemoth mostra a prévia antes de salvar qualquer lançamento.</p>
+            <div className="pdf-import-heading">
+              <span className="pdf-import-heading-icon" aria-hidden="true"><FileSpreadsheet size={20} /></span>
+              <div>
+                <p className="card-kicker">IMPORTAÇÃO DE DADOS</p>
+                <h2 id="financial-import-title">Importe dados financeiros</h2>
+                <p className="small muted">Revise os lançamentos antes de adicionar ao seu relatório.</p>
+              </div>
             </div>
             <button className="modal-close pdf-import-close" type="button" aria-label="Fechar importação" onClick={() => setActiveTab("report")}>
               <X size={18} />
             </button>
           </div>
+          <div className="pdf-import-formats" aria-label="Formatos aceitos">
+            <span><FileText size={14} /> PDF</span>
+            <span><FileSpreadsheet size={14} /> Excel</span>
+            <span><FileText size={14} /> Word</span>
+            <small>Até 10 MB por arquivo</small>
+          </div>
           <label
-            className={`pdf-dropzone ${isDraggingFile ? "is-dragging" : ""}`}
+            className={`pdf-dropzone ${isDraggingFile ? "is-dragging" : ""} ${pdfFile ? "has-file" : ""}`}
             htmlFor="financial-pdf"
             onDragEnter={(event) => {
               event.preventDefault();
@@ -408,9 +418,9 @@ export default function FinanceiroPage() {
               chooseFinancialFile(event.dataTransfer.files[0]);
             }}
           >
-            <Upload size={25} />
+            <span className="pdf-dropzone-icon"><Upload size={22} /></span>
             <strong>{pdfFile ? pdfFile.name : "Selecione ou arraste PDF, Excel ou Word aqui"}</strong>
-            <span>{pdfFile ? `${(pdfFile.size / 1024 / 1024).toFixed(2)} MB · ${processingPdf ? "lendo arquivo..." : "prévia pronta automaticamente"}` : "PDF · Excel (.xlsx/.xls) · Word (.docx) · máximo 10 MB"}</span>
+            <span>{pdfFile ? `${(pdfFile.size / 1024 / 1024).toFixed(2)} MB · ${processingPdf ? "lendo arquivo..." : "pronto para analisar"}` : "Clique para escolher um arquivo ou arraste-o até aqui"}</span>
             <input
               id="financial-pdf"
               type="file"

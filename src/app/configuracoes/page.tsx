@@ -264,7 +264,8 @@ export default function ConfiguracoesPage() {
             </div>
             <div className="field">
               <label htmlFor="profile-email">E-mail da conta</label>
-              <input id="profile-email" value={session?.user?.email ?? ""} readOnly />
+              <input id="profile-email" value={session?.user?.email ?? ""} readOnly aria-describedby="profile-email-hint" />
+              <span className="field-hint" id="profile-email-hint">Este e-mail é usado para entrar na conta e não pode ser alterado por aqui.</span>
             </div>
             <button className="btn btn-primary profile-save-button" type="submit" disabled={savingProfile || !displayName.trim()}>
               <Save size={15} /> {savingProfile ? "Salvando perfil..." : "Salvar perfil"}
