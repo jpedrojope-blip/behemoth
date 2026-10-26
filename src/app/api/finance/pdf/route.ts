@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import "pdf-parse/worker";
 import { PDFParse } from "pdf-parse";
 import * as XLSX from "xlsx";
 import { inflateRawSync } from "node:zlib";
