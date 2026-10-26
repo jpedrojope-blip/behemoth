@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { AppSelect } from "@/components/ui/app-select";
 import {
   BadgeDollarSign,
@@ -28,12 +28,14 @@ import {
   type CashPosition,
   type CashFlowFinancials,
   type CategoryTotal,
+  type DreBreakdownGroup,
+  type DreBreakdownTotal,
   type FinancialTimelinePoint,
   type Financials,
   type MonthlyPoint,
   type Period,
 } from "@/lib/finance";
-import { brl, brlExact, percent, shortDate, signedPercent } from "@/lib/format";
+import { brl, brlExact, compactBrl, percent, shortDate, signedPercent } from "@/lib/format";
 import type { Transaction } from "@/lib/types";
 
 type Payload = {
@@ -42,22 +44,29 @@ type Payload = {
   financials: Financials;
   cashFlow: CashFlowFinancials;
   cashPosition: CashPosition | null;
+  dreCashFlow: CashFlowFinancials | null;
+  dreCashPosition: CashPosition | null;
   comparison: { revenue: number; costs: number; profit: number };
   categories: string[];
   series: MonthlyPoint[];
   performanceSeries: FinancialTimelinePoint[];
   incomeByCategory: CategoryTotal[];
   expensesByCategory: CategoryTotal[];
+  dreMonth: string;
+  dreMonths: string[];
+  dreFinancials: Financials;
+  dreBreakdown: DreBreakdownTotal[];
   automated: number;
 };
 
-type PdfAnalysis = { summary: { grossRevenue: number; taxes: number; netRevenue: number; cmv: number; grossProfit: number; operatingExpenses: number; financialIncome: number; financialExpense: number; nonOperatingIncome: number; nonOperatingExpense: number; investments: number; financingIn: number; financingOut: number; netProfit: number; grossMargin: number | null; netMargin: number | null; operationalCashFlow: number; freeCashFlow: number; projectedFixedOutflow: number }; warnings: string[] };
+type PdfAnalysis = { summary: { grossRevenue: number; taxes: number; netRevenue: number; cmv: number; grossProfit: number; operatingExpenses: number; financialIncome: number; financialExpense: number; nonOperatingIncome: number; nonOperatingExpense: number; investments: number; financingIn: number; financingOut: number; netProfit: number; grossMargin: number | null; netMargin: number | null; operationalCashFlow: number | null; freeCashFlow: number | null; projectedFixedOutflow: number }; warnings: string[] };
 type ImportTransaction = Pick<Transaction, "date" | "description" | "amount" | "kind" | "category" | "financialReport" | "competenceDate" | "cashDate" | "costBehavior">;
 type ImportPreview = { transactions?: ImportTransaction[]; analysis?: PdfAnalysis };
 
 const IMPORT_BATCH_SIZE = 500;
 const MAX_IMPORT_FILE_SIZE = 10 * 1024 * 1024;
-const IMPORT_EXTENSIONS = new Set(["pdf", "xlsx", "xls", "docx"]);
+const IMPORT_EXTENSIONS = new Set(["pdf", "xlsx", "xls", "csv", "docx"]);
+const IMPORT_PREVIEW_PAGE_SIZE = 25;
 
 async function importChunkIds(file: File, chunkCount: number) {
   if (!chunkCount) return [];
@@ -101,7 +110,7 @@ const EMPTY_FORM = {
   category: "",
   date: new Date().toISOString().slice(0, 10),
   cashDate: "",
-  financialReport: "BOTH" as NonNullable<Transaction["financialReport"]>,
+  financialReport: "DRE" as NonNullable<Transaction["financialReport"]>,
   costBehavior: "AUTO" as NonNullable<Transaction["costBehavior"]>,
   status: "CONFIRMED" as Transaction["status"],
   recurrence: "NONE" as NonNullable<Transaction["recurrence"]>,
@@ -123,8 +132,157 @@ function signedBrl(value: number) {
   return `${value < 0 ? "−" : "+"} ${brlExact(Math.abs(value))}`;
 }
 
+function currentMonthValue() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatDreMonth(value: string) {
+  const [year, month] = value.split("-").map(Number);
+  const label = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(new Date(year, month - 1, 1));
+  return label.charAt(0).toLocaleUpperCase("pt-BR") + label.slice(1);
+}
+
+type DreStageId = "gross-revenue" | "net-revenue" | "gross-profit" | "operating-result" | "net-profit";
+type DreDetailItem = { id: string; label: string; note: string; value: number };
+type DreStageDefinition = {
+  id: DreStageId;
+  label: string;
+  chartLines: [string, string];
+  description: string;
+  formula: string;
+  detailTitle: string;
+  detailHeading: string;
+};
+
+const DRE_STAGE_DEFINITIONS: DreStageDefinition[] = [
+  {
+    id: "gross-revenue",
+    label: "Receita bruta",
+    chartLines: ["Receita", "bruta"],
+    description: "Soma das receitas operacionais confirmadas no período, antes dos impostos e custos.",
+    formula: "Soma das receitas classificadas para a DRE",
+    detailTitle: "O que formou o faturamento",
+    detailHeading: "Receitas do período",
+  },
+  {
+    id: "net-revenue",
+    label: "Receita líquida",
+    chartLines: ["Receita", "líquida"],
+    description: "Mostra quanto da receita permanece depois dos impostos sobre vendas e serviços.",
+    formula: "Receita bruta − impostos sobre a receita",
+    detailTitle: "Impostos sobre a receita",
+    detailHeading: "O que foi descontado",
+  },
+  {
+    id: "gross-profit",
+    label: "Lucro bruto",
+    chartLines: ["Lucro", "bruto"],
+    description: "Indica o valor que sobra depois dos custos diretamente ligados ao que foi vendido.",
+    formula: "Receita líquida − CMV e custos diretos",
+    detailTitle: "Custos ligados às vendas",
+    detailHeading: "CMV e custos variáveis",
+  },
+  {
+    id: "operating-result",
+    label: "Resultado operacional",
+    chartLines: ["Resultado", "operacional"],
+    description: "Mostra o resultado da atividade após os gastos necessários para manter a operação.",
+    formula: "Lucro bruto − despesas operacionais",
+    detailTitle: "Despesas da operação",
+    detailHeading: "O que mantém a operação",
+  },
+  {
+    id: "net-profit",
+    label: "Lucro líquido",
+    chartLines: ["Lucro", "líquido"],
+    description: "É o resultado final depois dos custos, despesas e resultados financeiros e não operacionais.",
+    formula: "Resultado operacional + resultado financeiro + resultado não operacional",
+    detailTitle: "O que saiu do faturamento",
+    detailHeading: "Composição do resultado",
+  },
+];
+
+function dreBreakdownNote(group: DreBreakdownGroup) {
+  if (group === "revenue") return "Receita operacional que compõe o faturamento";
+  if (group === "tax") return "Tributo sobre vendas ou serviços";
+  if (group === "direct") return "Custo diretamente ligado à venda";
+  if (group === "financial-income") return "Juros, tarifas ou rendimentos financeiros recebidos";
+  if (group === "financial-expense") return "Juros ou tarifas financeiras pagas";
+  if (group === "non-operating-income") return "Receita fora da atividade principal";
+  if (group === "non-operating-expense") return "Despesa fora da atividade principal";
+  return "Despesa necessária para a operação";
+}
+
+function dreDetailItems(
+  stageId: DreStageId,
+  breakdown: DreBreakdownTotal[],
+  financials?: Financials,
+): DreDetailItem[] {
+  const categoryRows = (groups: DreBreakdownGroup[], fallback?: DreDetailItem) => {
+    const rows = breakdown
+      .filter((entry) => groups.includes(entry.group))
+      .map((entry) => ({
+        id: `${entry.group}:${entry.category}`,
+        label: entry.category,
+        note: dreBreakdownNote(entry.group),
+        value: entry.group.endsWith("income") || entry.group === "revenue" ? entry.amount : -entry.amount,
+      }));
+    return rows.length || !fallback ? rows : [fallback];
+  };
+
+  if (stageId === "gross-revenue") return categoryRows(["revenue"], financials?.grossRevenue ? {
+    id: "revenue:period",
+    label: "Receitas do período",
+    note: "Receitas operacionais confirmadas",
+    value: financials.grossRevenue,
+  } : undefined);
+  if (stageId === "net-revenue") {
+    return categoryRows(["tax"], financials?.taxes ? {
+      id: "tax:total",
+      label: "Impostos sobre a receita",
+      note: "Tributos descontados do faturamento",
+      value: -financials.taxes,
+    } : undefined);
+  }
+  if (stageId === "gross-profit") {
+    return categoryRows(["direct"], financials?.cmv ? {
+      id: "direct:total",
+      label: "CMV e custos diretos",
+      note: "Custos ligados ao que foi vendido",
+      value: -financials.cmv,
+    } : undefined);
+  }
+  if (stageId === "operating-result") {
+    return categoryRows(["operating"], financials?.operationalExpenses ? {
+      id: "operating:total",
+      label: "Despesas operacionais",
+      note: "Gastos necessários para manter a operação",
+      value: -financials.operationalExpenses,
+    } : undefined);
+  }
+
+  return categoryRows([
+    "tax",
+    "direct",
+    "operating",
+    "financial-income",
+    "financial-expense",
+    "non-operating-income",
+    "non-operating-expense",
+  ]);
+}
+
+function selectDreStageWithKeyboard(event: KeyboardEvent<SVGGElement>, stageId: DreStageId, select: (value: DreStageId) => void) {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  select(stageId);
+}
+
 export default function FinanceiroPage() {
   const [period, setPeriod] = useState<Period>("mes");
+  const [dreMonth, setDreMonth] = useState(currentMonthValue);
+  const [selectedDreStep, setSelectedDreStep] = useState<DreStageId>("net-profit");
   const [visibleSections, setVisibleSections] = useState<Set<FinanceSectionId>>(() => new Set(DEFAULT_FINANCE_SECTIONS));
   const [kind, setKind] = useState("todos");
   const [category, setCategory] = useState("todas");
@@ -139,6 +297,7 @@ export default function FinanceiroPage() {
   const [savingImport, setSavingImport] = useState(false);
   const [pdfImportDone, setPdfImportDone] = useState(false);
   const [pdfTransactions, setPdfTransactions] = useState<ImportTransaction[]>([]);
+  const [importPage, setImportPage] = useState(0);
   const [importIds, setImportIds] = useState<string[]>([]);
   const [completedImportChunks, setCompletedImportChunks] = useState(0);
   const [pdfAnalysis, setPdfAnalysis] = useState<PdfAnalysis | null>(null);
@@ -171,7 +330,7 @@ export default function FinanceiroPage() {
   }
 
   const { data, loading, error } = useResource<Payload>(
-    `/api/transactions?period=${period}&kind=${kind}&category=${encodeURIComponent(category)}`,
+    `/api/transactions?period=${period}&dreMonth=${dreMonth}&kind=${kind}&category=${encodeURIComponent(category)}`,
   );
   useAutoRevalidate();
 
@@ -203,6 +362,7 @@ export default function FinanceiroPage() {
     setPdfReadDone(false);
     setPdfImportDone(false);
     setPdfTransactions([]);
+    setImportPage(0);
     setImportIds([]);
     setCompletedImportChunks(0);
     setPdfAnalysis(null);
@@ -232,6 +392,7 @@ export default function FinanceiroPage() {
   function clearImportPreview() {
     setPdfFile(null);
     setPdfTransactions([]);
+    setImportPage(0);
     setImportIds([]);
     setCompletedImportChunks(0);
     setPdfAnalysis(null);
@@ -244,7 +405,7 @@ export default function FinanceiroPage() {
     if (!file) return;
     const extension = file.name.toLowerCase().split(".").pop() ?? "";
     if (!IMPORT_EXTENSIONS.has(extension)) {
-      notify("Envie um PDF, uma planilha Excel (.xlsx/.xls) ou um documento Word (.docx).", "error");
+      notify("Envie um PDF, Excel (.xlsx/.xls), CSV ou Word (.docx).", "error");
       return;
     }
     if (file.size > MAX_IMPORT_FILE_SIZE) {
@@ -253,6 +414,7 @@ export default function FinanceiroPage() {
     }
     setPdfFile(file);
     setPdfTransactions([]);
+    setImportPage(0);
     setImportIds([]);
     setCompletedImportChunks(0);
     setPdfAnalysis(null);
@@ -263,10 +425,18 @@ export default function FinanceiroPage() {
 
   async function confirmImport() {
     if (!pdfTransactions.length || pdfImportDone) return;
+    if (importNeedsCashDate) {
+      notify("Informe a data de liquidação dos lançamentos marcados para DRE e caixa.", "error");
+      return;
+    }
+    if (importHasInvalidRows) {
+      notify("Revise a descrição e o valor de todos os lançamentos antes de importar.", "error");
+      return;
+    }
     setSavingImport(true);
     let saved = completedImportChunks * IMPORT_BATCH_SIZE;
     const extension = pdfFile?.name.toLowerCase().split(".").pop();
-    const source = extension === "xlsx" || extension === "xls" ? "Excel" : extension === "docx" ? "Word" : "PDF";
+    const source = extension === "xlsx" || extension === "xls" ? "Excel" : extension === "csv" ? "CSV" : extension === "docx" ? "Word" : "PDF";
     try {
       const totalChunks = Math.ceil(pdfTransactions.length / IMPORT_BATCH_SIZE);
       for (let chunkIndex = completedImportChunks; chunkIndex < totalChunks; chunkIndex += 1) {
@@ -292,6 +462,12 @@ export default function FinanceiroPage() {
     }
   }
 
+  function updateImportTransaction(index: number, changes: Partial<ImportTransaction>) {
+    setPdfTransactions((current) => current.map((transaction, itemIndex) =>
+      itemIndex === index ? { ...transaction, ...changes } : transaction,
+    ));
+  }
+
   async function toggleStatus(transaction: Transaction) {
     try {
       await apiFetch(`/api/transactions/${transaction.id}`, {
@@ -314,13 +490,63 @@ export default function FinanceiroPage() {
   }
 
   const financials = data?.financials;
+  const dreFinancials = data?.dreFinancials ?? financials;
   const cashFlow = data?.cashFlow;
+  const dreCashFlow = data?.dreCashFlow;
+  const dreCashPosition = data?.dreCashPosition;
   const revenue = financials?.grossRevenue ?? 0;
   const costs = financials?.costs ?? 0;
   const margin = (financials?.netMargin ?? 0) * 100;
-  const costIndex = revenue ? (costs / revenue) * 100 : 0;
+  const dreRevenue = dreFinancials?.grossRevenue ?? 0;
+  const dreMargin = (dreFinancials?.netMargin ?? 0) * 100;
+  const dreCostIndex = dreRevenue ? ((dreFinancials?.costs ?? 0) / dreRevenue) * 100 : 0;
+  const dreMonthOptions = data?.dreMonths?.length ? data.dreMonths : [dreMonth];
+  const dreValues: Record<DreStageId, number> = {
+    "gross-revenue": dreRevenue,
+    "net-revenue": dreFinancials?.netRevenue ?? 0,
+    "gross-profit": dreFinancials?.grossProfit ?? 0,
+    "operating-result": (dreFinancials?.grossProfit ?? 0) - (dreFinancials?.operationalExpenses ?? 0),
+    "net-profit": dreFinancials?.netProfit ?? 0,
+  };
+  const dreStages = DRE_STAGE_DEFINITIONS.map((definition) => ({ ...definition, value: dreValues[definition.id] }));
+  const selectedDreStage = dreStages.find((stage) => stage.id === selectedDreStep) ?? dreStages[dreStages.length - 1];
+  const selectedDreItems = dreDetailItems(
+    selectedDreStep,
+    data?.dreBreakdown ?? [],
+    dreFinancials,
+  );
+  const chartMaxPositive = Math.max(0, ...dreStages.map((stage) => stage.value));
+  const chartMaxNegative = Math.max(0, ...dreStages.map((stage) => Math.abs(Math.min(stage.value, 0))));
+  const chartScaleTotal = chartMaxPositive + chartMaxNegative;
+  const chartPositiveRatio = chartScaleTotal ? chartMaxPositive / chartScaleTotal : 1;
+  const chartTop = 42;
+  const chartPlotHeight = 178;
+  const chartZeroY = chartTop + chartPlotHeight * chartPositiveRatio;
+  const chartPositiveHeight = chartPlotHeight * chartPositiveRatio;
+  const chartNegativeHeight = chartPlotHeight - chartPositiveHeight;
+  const chartCenters = [148, 293, 438, 583, 728];
+  const chartTicks = chartMaxPositive > 0 ? [1, 0.75, 0.5, 0.25, 0] : [0];
+  const chartStageGeometry = dreStages.map((stage, index) => {
+    const center = chartCenters[index] ?? 0;
+    const barHeight = stage.value > 0 && chartMaxPositive
+      ? (stage.value / chartMaxPositive) * chartPositiveHeight
+      : stage.value < 0 && chartMaxNegative
+        ? (Math.abs(stage.value) / chartMaxNegative) * chartNegativeHeight
+        : 0;
+    const barY = stage.value < 0 ? chartZeroY : chartZeroY - barHeight;
+    const valueY = stage.value < 0
+      ? Math.min(chartTop + chartPlotHeight + 18, barY + barHeight + 17)
+      : Math.max(18, barY - 12);
+    return { ...stage, center, barHeight, barY, valueY };
+  });
+  const selectedDreShare = dreRevenue ? (selectedDreStage.value / dreRevenue) * 100 : null;
   const importBatchCount = Math.ceil(pdfTransactions.length / IMPORT_BATCH_SIZE);
   const importProgress = importBatchCount ? Math.round((completedImportChunks / importBatchCount) * 100) : 0;
+  const importPreviewPageCount = Math.ceil(pdfTransactions.length / IMPORT_PREVIEW_PAGE_SIZE);
+  const importPreviewStart = importPage * IMPORT_PREVIEW_PAGE_SIZE;
+  const visibleImportTransactions = pdfTransactions.slice(importPreviewStart, importPreviewStart + IMPORT_PREVIEW_PAGE_SIZE);
+  const importNeedsCashDate = pdfTransactions.some((item) => item.financialReport === "BOTH" && !item.cashDate);
+  const importHasInvalidRows = pdfTransactions.some((item) => !item.description.trim() || !Number.isFinite(item.amount) || item.amount <= 0);
   const importFileExtension = pdfFile?.name.toLowerCase().split(".").pop();
   const importFileSize = pdfFile
     ? pdfFile.size < 1024 * 1024
@@ -437,7 +663,7 @@ export default function FinanceiroPage() {
           </div>
           <div className="pdf-import-formats" aria-label="Formatos aceitos">
             <span><FileText size={14} /> PDF</span>
-            <span><FileSpreadsheet size={14} /> Excel</span>
+            <span><FileSpreadsheet size={14} /> Excel / CSV</span>
             <span><FileText size={14} /> Word</span>
             <small>Até 10 MB por arquivo</small>
           </div>
@@ -469,7 +695,7 @@ export default function FinanceiroPage() {
               type="file"
               aria-label="Selecionar arquivo financeiro"
               disabled={processingPdf || savingImport}
-              accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.ms-excel,.xls,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,application/vnd.ms-excel,.xls,text/csv,.csv,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               onChange={(event) => {
                 chooseFinancialFile(event.target.files?.[0]);
                 event.currentTarget.value = "";
@@ -497,13 +723,21 @@ export default function FinanceiroPage() {
                   <X size={17} />
                 </button>
               </div>
+              {(processingPdf || savingImport) && (
+                <progress
+                  className="pdf-selected-file-progress"
+                  value={savingImport ? completedImportChunks : undefined}
+                  max={Math.max(importBatchCount, 1)}
+                  aria-label={savingImport ? "Progresso da importação" : "Leitura do arquivo"}
+                />
+              )}
             </div>
           )}
-          <div className="pdf-import-actions">
-            <button className="btn btn-primary" disabled={!pdfFile || processingPdf || savingImport || pdfImportDone} onClick={() => void processFinancialFile()}>
+          <div className={`pdf-import-actions ${pdfTransactions.length > 0 && !pdfImportDone ? "has-confirm-action" : ""}`}>
+            <button className="btn btn-ghost pdf-import-read-action" disabled={!pdfFile || processingPdf || savingImport || pdfImportDone} onClick={() => void processFinancialFile()}>
               {processingPdf ? "Lendo arquivo..." : pdfReadDone ? "Ler novamente" : "Ler arquivo"}
             </button>
-            {pdfTransactions.length > 0 && !pdfImportDone && <button className="btn btn-primary" disabled={savingImport} onClick={confirmImport}>
+            {pdfTransactions.length > 0 && !pdfImportDone && <button className="btn btn-primary pdf-import-confirm-action" disabled={savingImport || importNeedsCashDate || importHasInvalidRows} onClick={confirmImport}>
               {savingImport ? "Importando..." : `Confirmar ${pdfTransactions.length} lançamento(s)`}
             </button>}
           </div>
@@ -517,22 +751,107 @@ export default function FinanceiroPage() {
             {savingImport && `Salvando lançamentos: ${importProgress}% concluído.`}
           </div>
           {importError && <p className="import-error" role="alert">{importError}</p>}
-          {savingImport && <progress className="import-progress" value={completedImportChunks} max={importBatchCount}> {importProgress}% </progress>}
           {pdfImportDone && <div className="pdf-result"><strong>Importação concluída.</strong><p className="small muted">Os lançamentos já aparecem no relatório financeiro.</p></div>}
           {pdfTransactions.length > 0 && (
             <div className="pdf-result">
               <strong>{pdfImportDone ? "Lançamentos importados" : `${pdfTransactions.length} lançamento(s) encontrados · revise antes de importar`}</strong>
               <div className="pdf-transaction-list">
-                {pdfTransactions.slice(0, 8).map((item, index) => (
-                  <div className={`pdf-transaction-row ${item.kind === "INCOME" ? "is-income" : "is-expense"}`} key={`${item.date}-${index}`}>
-                    <span className="transaction-date">{item.date}</span>
-                    <b>{item.description}</b>
-                    <em>{item.kind === "INCOME" ? "+" : "−"} {brl(item.amount)}</em>
-                  </div>
-                ))}
+                {visibleImportTransactions.map((item, visibleIndex) => {
+                  const index = importPreviewStart + visibleIndex;
+                  const report = item.financialReport ?? "DRE";
+                  const shownDate = report === "DFC" ? item.cashDate ?? item.date : item.competenceDate ?? item.date;
+                  return (
+                    <div className={`pdf-transaction-row pdf-transaction-review ${item.kind === "INCOME" ? "is-income" : "is-expense"}`} key={`${item.date}-${index}`}>
+                      <div className="pdf-transaction-review-head">
+                        <label className="import-review-field import-review-description">
+                          <span>Descrição</span>
+                          <input disabled={pdfImportDone} value={item.description} onChange={(event) => updateImportTransaction(index, { description: event.target.value })} />
+                        </label>
+                        <label className="import-review-field import-review-amount">
+                          <span>Valor (R$)</span>
+                          <input disabled={pdfImportDone} min="0.01" step="0.01" type="number" value={item.amount} onChange={(event) => updateImportTransaction(index, { amount: event.currentTarget.valueAsNumber || 0 })} />
+                        </label>
+                      </div>
+                      <div className="pdf-transaction-review-fields">
+                        <label className="import-review-field">
+                          <span>{report === "DFC" ? "Data de caixa" : "Data de competência"}</span>
+                          <input
+                            disabled={pdfImportDone}
+                            type="date"
+                            value={shownDate}
+                            onChange={(event) => updateImportTransaction(index, report === "DFC"
+                              ? { date: event.target.value, cashDate: event.target.value }
+                              : { date: event.target.value, competenceDate: event.target.value })}
+                          />
+                        </label>
+                        <label className="import-review-field">
+                          <span>Categoria</span>
+                          <input
+                            disabled={pdfImportDone}
+                            list={`import-categories-${index}`}
+                            value={item.category}
+                            onChange={(event) => updateImportTransaction(index, { category: event.target.value })}
+                          />
+                          <datalist id={`import-categories-${index}`}>
+                            {(data?.categories ?? []).map((categoryOption) => <option key={categoryOption} value={categoryOption} />)}
+                            {["Receita", "IMPOSTO", "CMV", "RH", "ADMINISTRATIVA", "VENDAS", "FINANCEIRA", "NAO_OPERACIONAL", "OUTROS", "INVESTIMENTO", "FINANCIAMENTO"].map((categoryOption) => <option key={categoryOption} value={categoryOption} />)}
+                          </datalist>
+                        </label>
+                        <label className="import-review-field">
+                          <span>Tipo de lançamento</span>
+                          <AppSelect disabled={pdfImportDone} value={item.kind} onChange={(event) => updateImportTransaction(index, { kind: event.target.value as Transaction["kind"] })}>
+                            <option value="INCOME">Receita</option>
+                            <option value="EXPENSE">Despesa</option>
+                          </AppSelect>
+                        </label>
+                        {item.kind === "EXPENSE" && (
+                          <label className="import-review-field">
+                            <span>Comportamento do custo</span>
+                            <AppSelect disabled={pdfImportDone} value={item.costBehavior ?? "AUTO"} onChange={(event) => updateImportTransaction(index, { costBehavior: event.target.value as NonNullable<Transaction["costBehavior"]> })}>
+                              <option value="AUTO">Automático</option>
+                              <option value="FIXED">Fixo</option>
+                              <option value="VARIABLE">Variável</option>
+                            </AppSelect>
+                          </label>
+                        )}
+                        <label className="import-review-field">
+                          <span>Relatório</span>
+                          <AppSelect
+                            disabled={pdfImportDone}
+                            value={report}
+                            onChange={(event) => {
+                              const financialReport = event.target.value as NonNullable<Transaction["financialReport"]>;
+                              updateImportTransaction(index, financialReport === "DFC"
+                                ? { financialReport, date: item.cashDate ?? item.date, cashDate: item.cashDate ?? item.date }
+                                : { financialReport });
+                            }}
+                          >
+                            <option value="DRE">Somente DRE</option>
+                            <option value="DFC">Somente caixa</option>
+                            <option value="BOTH">DRE e caixa</option>
+                          </AppSelect>
+                        </label>
+                        {report === "BOTH" && (
+                          <label className="import-review-field">
+                            <span>Data de liquidação</span>
+                            <input disabled={pdfImportDone} required type="date" value={item.cashDate ?? ""} onChange={(event) => updateImportTransaction(index, { cashDate: event.target.value || undefined })} />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              {pdfTransactions.length > 8 && <p className="small muted">+ {pdfTransactions.length - 8} lançamento(s) adicionais</p>}
-              <p className="small muted">{pdfImportDone ? "Essas informações já aparecem no painel e nos gráficos." : "Confira os lançamentos antes de confirmar a importação."}</p>
+              {importPreviewPageCount > 1 && (
+                <div className="import-preview-pagination">
+                  <button className="btn btn-ghost" disabled={importPage === 0} onClick={() => setImportPage((page) => Math.max(0, page - 1))}>Anterior</button>
+                  <span>{importPreviewStart + 1}–{Math.min(importPreviewStart + IMPORT_PREVIEW_PAGE_SIZE, pdfTransactions.length)} de {pdfTransactions.length}</span>
+                  <button className="btn btn-ghost" disabled={importPage + 1 >= importPreviewPageCount} onClick={() => setImportPage((page) => Math.min(importPreviewPageCount - 1, page + 1))}>Próxima</button>
+                </div>
+              )}
+              {importNeedsCashDate && !pdfImportDone && <p className="import-review-warning">Informe a data de liquidação em cada lançamento marcado para DRE e caixa antes de confirmar.</p>}
+              {importHasInvalidRows && !pdfImportDone && <p className="import-review-warning">A descrição precisa estar preenchida e o valor deve ser maior que zero para todos os lançamentos.</p>}
+              <p className="small muted">{pdfImportDone ? "Essas informações já aparecem no painel e nos gráficos." : "Revise descrição, categoria, competência e relatório de cada lançamento. Uma DRE sem data de liquidação não gera fluxo de caixa."}</p>
             </div>
           )}
           {pdfAnalysis && (
@@ -542,7 +861,7 @@ export default function FinanceiroPage() {
                 <span className="analysis-revenue">Receita bruta <b>{brl(pdfAnalysis.summary.grossRevenue)}</b></span><span className="analysis-tax">Impostos <b>{brl(pdfAnalysis.summary.taxes)}</b></span>
                 <span className="analysis-net-revenue">Receita líquida <b>{brl(pdfAnalysis.summary.netRevenue)}</b></span><span className="analysis-cost">CMV e custos <b>{brl(pdfAnalysis.summary.cmv)}</b></span>
                 <span className="analysis-profit">Lucro bruto <b>{brl(pdfAnalysis.summary.grossProfit)}</b></span><span className="analysis-expense">Despesas operacionais <b>{brl(pdfAnalysis.summary.operatingExpenses)}</b></span>
-                <span className="analysis-net-profit">Lucro líquido <b>{brl(pdfAnalysis.summary.netProfit)}</b></span><span className={pdfAnalysis.summary.freeCashFlow >= 0 ? "analysis-cash-positive" : "analysis-cash-negative"}>Fluxo de caixa livre <b>{brl(pdfAnalysis.summary.freeCashFlow)}</b></span>
+                <span className="analysis-net-profit">Lucro líquido <b>{brl(pdfAnalysis.summary.netProfit)}</b></span><span className={pdfAnalysis.summary.freeCashFlow === null ? "analysis-cash-unavailable" : pdfAnalysis.summary.freeCashFlow >= 0 ? "analysis-cash-positive" : "analysis-cash-negative"}>Fluxo de caixa livre <b>{pdfAnalysis.summary.freeCashFlow === null ? "Sem dados de liquidação" : brl(pdfAnalysis.summary.freeCashFlow)}</b></span>
               </div>
               <p className="small muted">DRE: competência · DFC: caixa · Margem bruta: {pdfAnalysis.summary.grossMargin === null ? "—" : percent(pdfAnalysis.summary.grossMargin / 100)} · Margem líquida: {pdfAnalysis.summary.netMargin === null ? "—" : percent(pdfAnalysis.summary.netMargin / 100)}</p>
               {pdfAnalysis.warnings.map((warning) => <p className="small muted" key={warning}>{warning}</p>)}
@@ -602,7 +921,7 @@ export default function FinanceiroPage() {
           )}
         </div>
 
-        <div className="card">
+        <div className="card financial-expense-breakdown">
           <div className="card-head">
             <div>
               <p className="card-kicker">COMPOSIÇÃO DOS CUSTOS</p>
@@ -629,117 +948,170 @@ export default function FinanceiroPage() {
         </div>
       </section>
 
-      <section className="section split" hidden={!visibleSections.has("dre")}>
-        <div className="card">
-          <div className="card-head">
+      <section className="section split dre-section" hidden={!visibleSections.has("dre")}>
+        <div className="card dre-chart-card">
+          <div className="dre-chart-card-head">
             <div>
-              <p className="card-kicker">DETALHAMENTO FINANCEIRO</p>
               <h2>DRE do período</h2>
+              <p>Selecione uma etapa para ver a composição e entender o resultado.</p>
+            </div>
+            <div className="dre-period-select">
+              <AppSelect
+                aria-label="Mês do DRE"
+                className="dre-period-tag"
+                value={dreMonth}
+                onChange={(event) => setDreMonth(event.target.value)}
+              >
+                {dreMonthOptions.map((month) => (
+                  <option key={month} value={month}>{formatDreMonth(month)}</option>
+                ))}
+              </AppSelect>
+              <div className="dre-cash-balance">
+                <span>Saldo restante</span>
+                <strong className={dreCashPosition ? (dreCashPosition.closingBalance < 0 ? "is-negative" : "is-positive") : "is-unavailable"}>
+                  {dreCashPosition ? brlExact(dreCashPosition.closingBalance) : "Não configurado"}
+                </strong>
+              </div>
             </div>
           </div>
-          <div className="table-wrap" style={{ marginTop: 16 }}>
-            <table className="table" style={{ minWidth: 420 }}>
-              <thead>
-                <tr>
-                  <th>DESCRIÇÃO</th>
-                  <th className="num">VALOR</th>
-                  <th className="num">% DA RECEITA</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Receita bruta</td>
-                  <td className="num">{brlExact(revenue)}</td>
-                  <td className="num">100,0%</td>
-                </tr>
-                <tr>
-                  <td style={{ paddingLeft: 26, color: "var(--muted)" }}>(−) Impostos sobre receita</td>
-                  <td className="num" style={{ color: "#ff8f7a" }}>−{brlExact(financials?.taxes ?? 0)}</td>
-                  <td className="num">{revenue ? percent(((financials?.taxes ?? 0) / revenue) * 100) : "—"}</td>
-                </tr>
-                <tr>
-                  <td><strong>= Receita líquida</strong></td>
-                  <td className="num"><strong>{brlExact(financials?.netRevenue ?? 0)}</strong></td>
-                  <td className="num"><strong>{revenue ? percent(((financials?.netRevenue ?? 0) / revenue) * 100) : "—"}</strong></td>
-                </tr>
-                <tr>
-                  <td style={{ paddingLeft: 26, color: "var(--muted)" }}>(−) CMV e custos variáveis</td>
-                  <td className="num" style={{ color: "#ff8f7a" }}>−{brlExact(financials?.cmv ?? 0)}</td>
-                  <td className="num">{revenue ? percent(((financials?.cmv ?? 0) / revenue) * 100) : "—"}</td>
-                </tr>
-                <tr>
-                  <td><strong>= Lucro bruto</strong></td>
-                  <td className="num"><strong>{brlExact(financials?.grossProfit ?? 0)}</strong></td>
-                  <td className="num"><strong>{percent(((financials?.grossMargin ?? 0) * 100))}</strong></td>
-                </tr>
-                <tr>
-                  <td><strong>(−) Despesas operacionais</strong></td>
-                  <td className="num" style={{ color: "#ff8f7a" }}>−{brlExact(financials?.operationalExpenses ?? 0)}</td>
-                  <td className="num">{revenue ? percent(((financials?.operationalExpenses ?? 0) / revenue) * 100) : "—"}</td>
-                </tr>
-                {(data?.expensesByCategory ?? []).filter((entry) => !/imposto|tribut|simples|cmv|custo|fornecedor|embalag|financeir|juros|nao operacional|extraordinari|investimento|divida|dividendo|aporte/i.test(entry.category)).map((entry) => (
-                  <tr key={entry.category}>
-                    <td style={{ paddingLeft: 26, color: "var(--muted)" }}>(−) {entry.category}</td>
-                    <td className="num" style={{ color: "#ff8f7a" }}>
-                      −{brlExact(entry.amount)}
-                    </td>
-                    <td className="num">{revenue ? percent((entry.amount / revenue) * 100) : "—"}</td>
-                  </tr>
-                ))}
-                <tr>
-                  <td>Resultado financeiro</td>
-                  <td className="num" style={{ color: (financials?.financialResult ?? 0) < 0 ? "#ff8f7a" : "#4ade80" }}>{signedBrl(financials?.financialResult ?? 0)}</td>
-                  <td className="num">{revenue ? percent(((financials?.financialResult ?? 0) / revenue) * 100) : "—"}</td>
-                </tr>
-                <tr>
-                  <td>Resultado não operacional</td>
-                  <td className="num" style={{ color: (financials?.nonOperatingResult ?? 0) < 0 ? "#ff8f7a" : "#4ade80" }}>{signedBrl(financials?.nonOperatingResult ?? 0)}</td>
-                  <td className="num">{revenue ? percent(((financials?.nonOperatingResult ?? 0) / revenue) * 100) : "—"}</td>
-                </tr>
-                <tr>
-                  <td>
-                    <strong>= Lucro líquido</strong>
-                  </td>
-                  <td className="num">
-                    <strong style={{ color: (financials?.netProfit ?? 0) >= 0 ? "#4ade80" : "#ff8f7a" }}>
-                      {brlExact(financials?.netProfit ?? 0)}
-                    </strong>
-                  </td>
-                  <td className="num">
-                    <strong>{percent(margin)}</strong>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          {loading && !data ? (
+            <div className="dre-chart-loading" role="status">Carregando DRE...</div>
+          ) : (
+            <div className="dre-chart-scroll">
+              <svg className="dre-chart-svg" viewBox="0 0 820 324" role="group" aria-label="Etapas do DRE. Selecione uma coluna para ver seus detalhes.">
+                {chartTicks.map((fraction) => {
+                  const y = chartZeroY - chartPositiveHeight * fraction;
+                  return (
+                    <g key={fraction}>
+                      <line className={fraction === 0 ? "dre-gridline dre-gridline-zero" : "dre-gridline"} x1="82" x2="804" y1={y} y2={y} />
+                      <text className="dre-axis-label" x="4" y={y - 5}>{compactBrl(chartMaxPositive * fraction)}</text>
+                    </g>
+                  );
+                })}
+                {chartMaxNegative > 0 && <text className="dre-axis-label" x="4" y={chartTop + chartPlotHeight + 17}>−{compactBrl(chartMaxNegative)}</text>}
+                {chartStageGeometry.slice(0, -1).map((stage, index) => {
+                  const nextStage = chartStageGeometry[index + 1];
+                  if (!nextStage) return null;
+                  return (
+                    <path
+                      key={`connector:${stage.id}`}
+                      className="dre-waterfall-connector"
+                      d={`M ${stage.center + 31} ${stage.barY} H ${nextStage.center - 31} V ${nextStage.barY}`}
+                    />
+                  );
+                })}
+                {chartStageGeometry.map((stage) => {
+                  const share = dreRevenue ? percent((stage.value / dreRevenue) * 100) : "—";
+                  const fillClass = stage.value < 0 ? "dre-bar-negative" : `dre-bar-${stage.id}`;
+                  return (
+                    <g
+                      key={stage.id}
+                      className={selectedDreStep === stage.id ? "dre-chart-step is-selected" : "dre-chart-step"}
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={selectedDreStep === stage.id}
+                      aria-label={`Selecionar ${stage.label}: ${brlExact(stage.value)}; ${share} da receita bruta`}
+                      onClick={() => setSelectedDreStep(stage.id)}
+                      onKeyDown={(event) => selectDreStageWithKeyboard(event, stage.id, setSelectedDreStep)}
+                    >
+                      <rect className="dre-step-hit-area" x={stage.center - 60} y="14" width="120" height="298" rx="12" />
+                      <rect className={`dre-chart-bar ${fillClass}`} x={stage.center - 30} y={stage.barY} width="60" height={stage.barHeight} rx="6" />
+                      <text className={`dre-value-label${stage.id === "gross-revenue" ? " is-primary" : ""}${stage.value < 0 ? " is-negative" : ""}`} x={stage.center} y={stage.valueY} textAnchor="middle">{compactBrl(stage.value)}</text>
+                      <text className="dre-step-label" x={stage.center} y="263" textAnchor="middle">
+                        <tspan x={stage.center} dy="0">{stage.chartLines[0]}</tspan>
+                        <tspan x={stage.center} dy="16">{stage.chartLines[1]}</tspan>
+                        <tspan className="dre-step-share" x={stage.center} dy="19">{share}</tspan>
+                      </text>
+                    </g>
+                  );
+                })}
+              </svg>
+            </div>
+          )}
+          <p className="dre-chart-footnote">Os valores consideram lançamentos confirmados classificados para DRE no mês selecionado.</p>
+          <div className="dre-cash-summary" aria-label={`Resumo de caixa de ${formatDreMonth(dreMonth)}`}>
+            <div>
+              <span>Caixa inicial</span>
+              <strong className={dreCashPosition ? (dreCashPosition.openingBalance < 0 ? "is-negative" : "is-positive") : "is-unavailable"}>
+                {dreCashPosition ? brlExact(dreCashPosition.openingBalance) : "—"}
+              </strong>
+            </div>
+            <div>
+              <span>Caixa gerado</span>
+              <strong className={dreCashFlow ? (dreCashFlow.freeCashFlow < 0 ? "is-negative" : "is-positive") : "is-unavailable"}>
+                {dreCashFlow ? signedBrl(dreCashFlow.freeCashFlow) : "—"}
+              </strong>
+            </div>
+            <div>
+              <span>Saldo final</span>
+              <strong className={dreCashPosition ? (dreCashPosition.closingBalance < 0 ? "is-negative" : "is-positive") : "is-unavailable"}>
+                {dreCashPosition ? brlExact(dreCashPosition.closingBalance) : "—"}
+              </strong>
+            </div>
           </div>
+          {!dreCashPosition && (
+            <p className="dre-cash-note">Cadastre o saldo inicial e a data em Configurações para calcular o saldo restante deste mês.</p>
+          )}
         </div>
 
-        <div className="card">
-          <div className="card-head">
+        <aside className="card dre-detail-card" aria-live="polite" aria-atomic="true">
+          <div className="dre-detail-head">
             <div>
-              <p className="card-kicker">INDICADORES DE DESEMPENHO</p>
-              <h2>Margem e eficiência</h2>
+              <h3>{selectedDreStage.detailTitle}</h3>
+            </div>
+            <span className="dre-detail-share-pill">{selectedDreShare === null ? "Sem receita" : percent(selectedDreShare)}</span>
+          </div>
+          <p className="dre-detail-description"><strong>{selectedDreStage.label}.</strong> {selectedDreStage.description}</p>
+          <div className="dre-detail-total">
+            <span>Resultado no mês</span>
+            <strong className={selectedDreStage.value < 0 ? "is-negative" : selectedDreStep === "net-profit" ? "is-positive" : ""}>
+              {brlExact(selectedDreStage.value)}
+            </strong>
+          </div>
+          <div className="dre-formula">
+            <span>Como calculamos</span>
+            <p>{selectedDreStage.formula}</p>
+          </div>
+          <div className="dre-breakdown-heading">
+            <h4>{selectedDreStage.detailHeading}</h4>
+            <span>{selectedDreItems.length} {selectedDreItems.length === 1 ? "item" : "itens"}</span>
+          </div>
+          {selectedDreItems.length ? (
+            <ul className="dre-breakdown-list">
+              {selectedDreItems.map((item) => {
+                const tone = item.value > 0 ? "positive" : item.value < 0 ? "negative" : "neutral";
+                return (
+                  <li className="dre-breakdown-row" key={item.id}>
+                    <span className={`dre-breakdown-dot is-${tone}`} aria-hidden="true" />
+                    <div className="dre-breakdown-copy">
+                      <span>{item.label}</span>
+                      <small>{item.note}</small>
+                    </div>
+                    <strong className={`dre-breakdown-value is-${tone}`}>{signedBrl(item.value)}</strong>
+                    <span className="dre-breakdown-share">{dreRevenue ? percent((Math.abs(item.value) / dreRevenue) * 100) : "—"} da receita</span>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="dre-breakdown-empty">Nenhum lançamento detalhado compõe esta etapa neste mês.</p>
+          )}
+          <p className="dre-insight">
+            {dreRevenue
+              ? `A cada R$ 100,00 faturados, ${signedBrl(selectedDreStage.value / dreRevenue * 100)} chegam a ${selectedDreStage.label.toLowerCase()}.`
+              : "Registre receitas no mês para comparar cada etapa com o faturamento."}
+          </p>
+          <div className="dre-secondary-metrics">
+            <div>
+              <span>Margem líquida</span>
+              <strong className={dreMargin >= 0 ? "is-positive" : "is-negative"}>{percent(dreMargin)}</strong>
+            </div>
+            <div>
+              <span>Índice de custos</span>
+              <strong className={dreCostIndex > 70 ? "is-negative" : ""}>{percent(dreCostIndex)}</strong>
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginTop: 24 }}>
-            <Indicator
-              value={margin}
-              label="Margem líquida"
-              hint="lucro sobre a receita"
-              color={margin >= 0 ? "#22c55e" : "#ef4444"}
-            />
-            <Indicator
-              value={costIndex}
-              label="Índice de custos"
-              hint="custos sobre a receita"
-              color={costIndex > 70 ? "#ef4444" : "#3b82f6"}
-            />
-          </div>
-          <p className="small muted" style={{ marginTop: 22 }}>
-            {data?.automated ?? 0} lançamento(s) do período vieram de automações — custo da equipe, pagamentos
-            concluídos e recorrências.
-          </p>
-        </div>
+        </aside>
       </section>
 
       <section className="section split" hidden={!visibleSections.has("cashflow")}>
@@ -863,13 +1235,15 @@ export default function FinanceiroPage() {
                 />
               </div>
               <div className="field" hidden={form.financialReport !== "BOTH"}>
-                <label htmlFor="cashDate">Data no caixa</label>
+                  <label htmlFor="cashDate">Data de liquidação</label>
                 <input
                   id="cashDate"
                   type="date"
+                    required={form.financialReport === "BOTH"}
                   value={form.cashDate}
                   onChange={(event) => setForm({ ...form, cashDate: event.target.value })}
                 />
+                <p className="small muted">Só inclua no fluxo de caixa quando souber a data em que o valor foi liquidado.</p>
               </div>
               <div className="field">
                 <label htmlFor="financialReport">Entra em</label>
@@ -878,7 +1252,7 @@ export default function FinanceiroPage() {
                   value={form.financialReport}
                   onChange={(event) => setForm({ ...form, financialReport: event.target.value as NonNullable<Transaction["financialReport"]> })}
                 >
-                  <option value="BOTH">DRE e fluxo de caixa</option>
+                  <option value="BOTH">DRE e caixa (com liquidação)</option>
                   <option value="DRE">Somente DRE</option>
                   <option value="DFC">Somente fluxo de caixa</option>
                 </AppSelect>
@@ -1002,7 +1376,6 @@ export default function FinanceiroPage() {
     </div>
   );
 }
-
 function FinanceCard({
   icon,
   tone,
@@ -1034,25 +1407,6 @@ function FinanceCard({
       <div className="kpi-meter">
         <span style={{ color: positive ? "#4ade80" : "#ff8f7a", fontWeight: 600 }}>{delta}</span>
         <span>vs. período anterior</span>
-      </div>
-    </div>
-  );
-}
-
-function Indicator({ value, label, hint, color }: { value: number; label: string; hint: string; color: string }) {
-  const intensity = Math.min(Math.abs(value), 100);
-  const state = value < 0 ? "Atenção" : value > 70 && label.includes("custos") ? "Atenção" : "Saudável";
-  return (
-    <div style={{ display: "grid", gap: 8 }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-        <strong style={{ fontSize: 13.5 }}>{label}</strong>
-        <strong style={{ color, fontSize: 16 }}>{percent(value)}</strong>
-      </div>
-      <div style={{ height: 7, borderRadius: 999, overflow: "hidden", background: "#16264a" }} aria-label={`${label}: ${percent(value)}`}>
-        <span style={{ display: "block", width: `${intensity}%`, height: "100%", borderRadius: "inherit", background: color }} />
-      </div>
-      <div className="small muted" style={{ marginTop: 1 }}>
-        {state} · {hint}
       </div>
     </div>
   );

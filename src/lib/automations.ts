@@ -13,6 +13,7 @@ export function runAutomations(db: Database, reference = new Date()): string[] {
   const rules = db.automations ?? DEFAULT_AUTOMATIONS;
 
   if (rules.recurringTransactions) applied.push(...expandRecurring(db, reference));
+  applied.push(...resetUnconfirmedTeamCostEstimates(db));
   if (rules.teamCostToExpenses) applied.push(...syncTeamCost(db, reference));
   if (rules.actionItemsToCalendar) applied.push(...syncActionItems(db));
   if (rules.meetingsToCalendar) applied.push(...syncMeetings(db));
@@ -28,6 +29,26 @@ function monthKey(date: Date) {
 
 function dismissed(db: Database, id: string) {
   return db.dismissed.includes(id);
+}
+
+/** Older versions confirmed team-cost estimates automatically; keep them out of actual results until reviewed. */
+function resetUnconfirmedTeamCostEstimates(db: Database): string[] {
+  const updated: string[] = [];
+  for (const transaction of db.transactions) {
+    if (!transaction.id.startsWith("auto_team_") || !transaction.auto) continue;
+    const needsReview = transaction.status !== "PENDING"
+      || transaction.financialReport !== "DRE"
+      || transaction.description !== "Estimativa de custo da equipe e agentes"
+      || Boolean(transaction.cashDate || transaction.cashDateConfirmed);
+    if (!needsReview) continue;
+    transaction.status = "PENDING";
+    transaction.description = "Estimativa de custo da equipe e agentes";
+    transaction.financialReport = "DRE";
+    transaction.cashDate = undefined;
+    transaction.cashDateConfirmed = undefined;
+    updated.push(transaction.id);
+  }
+  return updated;
 }
 
 /** Lançamentos mensais recorrentes: materializa as ocorrências até o mês atual. */
@@ -73,7 +94,7 @@ function expandRecurring(db: Database, reference: Date): string[] {
   return applied;
 }
 
-/** Custo da equipe vira uma despesa do mês corrente, sempre atualizada. */
+/** Custo informado pela equipe fica como estimativa até alguém confirmar o valor realizado. */
 function syncTeamCost(db: Database, reference: Date): string[] {
   const key = monthKey(reference);
   const id = `auto_team_${key}`;
@@ -83,6 +104,8 @@ function syncTeamCost(db: Database, reference: Date): string[] {
     .filter((member) => member.status === "ACTIVE")
     .reduce((sum, member) => sum + member.monthlyCost, 0);
   const index = db.transactions.findIndex((transaction) => transaction.id === id);
+
+  if (index >= 0 && !db.transactions[index].auto) return [];
 
   if (total <= 0) {
     if (index >= 0) db.transactions.splice(index, 1);
@@ -95,17 +118,21 @@ function syncTeamCost(db: Database, reference: Date): string[] {
     companyId: db.company.id,
     kind: "EXPENSE",
     date: `${key}-${String(Math.min(reference.getDate(), lastDay)).padStart(2, "0")}`,
-    description: "Custo da equipe e agentes",
+    description: "Estimativa de custo da equipe e agentes",
     category: "Equipe",
     amount: total,
     source: "automação",
-    status: "CONFIRMED",
+    status: "PENDING",
+    financialReport: "DRE",
+    cashDate: undefined,
+    cashDateConfirmed: undefined,
     auto: true,
   };
 
   if (index >= 0) {
-    if (db.transactions[index].amount === total) return [];
-    db.transactions[index] = { ...db.transactions[index], amount: total, date: entry.date };
+    const existing = db.transactions[index];
+    if (existing.amount === total && existing.status === "PENDING" && existing.description === entry.description) return [];
+    db.transactions[index] = { ...existing, ...entry };
     return [id];
   }
 

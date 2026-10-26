@@ -34,17 +34,31 @@ type FinancialStatement = "DRE" | "DFC" | "ANY";
 
 function reportIncludes(transaction: Transaction, report: FinancialStatement) {
   if (report === "ANY") return true;
-  const selected = transaction.financialReport ?? "BOTH";
-  return selected === "BOTH" || selected === report;
+  const selected = transaction.financialReport ?? "DRE";
+  if (report === "DRE") return selected === "DRE" || selected === "BOTH";
+  return selected === "DFC" || (selected === "BOTH" && hasConfirmedCashDate(transaction));
 }
 
 function reportDates(transaction: Transaction, report: FinancialStatement) {
+  if (report === "ANY") return [transaction.date];
+  if (!reportIncludes(transaction, report)) return [];
   if (report === "DRE") return [transaction.competenceDate ?? transaction.date];
-  if (report === "DFC") return [transaction.cashDate ?? transaction.date];
-  const selected = transaction.financialReport ?? "BOTH";
-  if (selected === "DRE") return [transaction.competenceDate ?? transaction.date];
-  if (selected === "DFC") return [transaction.cashDate ?? transaction.date];
-  return [transaction.competenceDate ?? transaction.date, transaction.cashDate ?? transaction.date];
+  return [cashDateFor(transaction) ?? transaction.date];
+}
+
+function hasConfirmedCashDate(transaction: Transaction) {
+  if (transaction.financialReport === "DFC") return true;
+  if (!transaction.cashDate) return false;
+  if (transaction.cashDateConfirmed === true) return true;
+  return transaction.financialReport === "BOTH" && Boolean(
+    transaction.cashDate && transaction.cashDate !== (transaction.competenceDate ?? transaction.date),
+  );
+}
+
+function cashDateFor(transaction: Transaction) {
+  if (transaction.financialReport === "DFC") return transaction.cashDate ?? transaction.date;
+  if (transaction.financialReport === "BOTH" && hasConfirmedCashDate(transaction)) return transaction.cashDate;
+  return undefined;
 }
 
 export function filterByPeriod(
@@ -64,6 +78,37 @@ export function filterByPeriod(
       return date >= start && date <= end;
     });
   });
+}
+
+export function filterByMonth(transactions: Transaction[], month: string, report: FinancialStatement = "DRE") {
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month);
+  if (!match) return [];
+
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const start = new Date(year, monthIndex, 1);
+  const end = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
+
+  return transactions.filter((transaction) => {
+    return reportIncludes(transaction, report) && reportDates(transaction, report).some((value) => {
+      const date = parseDate(value);
+      return date >= start && date <= end;
+    });
+  });
+}
+
+export function availableDreMonths(transactions: Transaction[], reference = new Date()) {
+  const currentMonth = `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}`;
+  const months = new Set<string>([currentMonth]);
+
+  for (const transaction of transactions) {
+    if (transaction.status !== "CONFIRMED" || !reportIncludes(transaction, "DRE")) continue;
+    const [date] = reportDates(transaction, "DRE");
+    const match = /^(\d{4})-(0[1-9]|1[0-2])/.exec(date ?? "");
+    if (match) months.add(`${match[1]}-${match[2]}`);
+  }
+
+  return [...months].sort((left, right) => right.localeCompare(left));
 }
 
 export function previousPeriod(
@@ -124,7 +169,7 @@ function sum(transactions: Transaction[]) {
 }
 
 function normalizeCategory(category: string) {
-  return category.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return category.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -176,7 +221,11 @@ function isNonOperating(category: string) {
 }
 
 function isInvestment(category: string) {
-  return categoryMatches(category, /investimento|imobilizado|equipamento|obra estrutural|capex/);
+  return categoryMatches(category, /investimento|imobilizado|obra estrutural|capex|(?:aquisicao|compra) de (?:equipamento|imobilizado)|compra.*(?:maquina|veiculo)/);
+}
+
+function isMaintenance(description: string) {
+  return /manutenc|repar|conserto|reparo/.test(normalizeCategory(description));
 }
 
 function isFinancing(category: string) {
@@ -222,6 +271,7 @@ function transactionIsNonOperating(transaction: Transaction) {
 }
 
 function transactionIsInvestment(transaction: Transaction) {
+  if (isMaintenance(transaction.description)) return false;
   const group = accountGroup(transaction.accountCode);
   return group ? group === "INVESTMENT" : isInvestment(transaction.category);
 }
@@ -277,12 +327,13 @@ export function calculateFinancials(transactions: Transaction[]): Financials {
   const netRevenue = grossRevenue - taxes;
   const grossProfit = netRevenue - cmv;
   const netProfit = grossProfit - operationalExpenses + financialResult + nonOperatingResult;
-  const fixedExpenses = sum(reportExpenses.filter((transaction) => !isVariableExpense(transaction)));
-  const variableExpenses = sum(reportExpenses.filter(isVariableExpense));
-  const contributionMargin = grossRevenue - variableExpenses;
-  const contributionMarginRate = grossRevenue ? contributionMargin / grossRevenue : null;
+  const fixedExpenses = sum(operatingExpensesList.filter((transaction) => !isVariableExpense(transaction)));
+  const variableOperatingExpenses = sum(operatingExpensesList.filter(isVariableExpense));
+  const variableExpenses = cmv + variableOperatingExpenses;
+  const contributionMargin = netRevenue - variableExpenses;
+  const contributionMarginRate = netRevenue ? contributionMargin / netRevenue : null;
   const targetProfitMargin = 0.1;
-  const breakEvenBase = fixedExpenses - financialIncome - nonOperatingIncome;
+  const breakEvenBase = fixedExpenses;
   return {
     grossRevenue,
     taxes,
@@ -290,10 +341,10 @@ export function calculateFinancials(transactions: Transaction[]): Financials {
     operationalExpenses,
     netRevenue,
     grossProfit,
-    grossMargin: grossRevenue ? grossProfit / grossRevenue : 0,
+    grossMargin: netRevenue ? grossProfit / netRevenue : 0,
     costs,
     netProfit,
-    netMargin: grossRevenue ? netProfit / grossRevenue : 0,
+    netMargin: netRevenue ? netProfit / netRevenue : 0,
     financialIncome,
     financialExpense,
     financialResult,
@@ -351,12 +402,35 @@ export function calculateCashPosition(
   const periodStartKey = `${periodStart.getFullYear()}-${String(periodStart.getMonth() + 1).padStart(2, "0")}-${String(periodStart.getDate()).padStart(2, "0")}`;
   if (baselineDate > periodStartKey) return null;
   const movementsBeforePeriod = transactions.filter((transaction) => {
-    const date = transaction.cashDate ?? transaction.date;
+    const date = cashDateFor(transaction);
+    if (!date) return false;
     return reportIncludes(transaction, "DFC") && transaction.status === "CONFIRMED" && date >= baselineDate && date < periodStartKey;
   });
   const openingBalance = baselineBalance + calculateCashFlow(movementsBeforePeriod).freeCashFlow;
   const periodFlow = calculateCashFlow(filterByPeriod(transactions, period, reference, "DFC")).freeCashFlow;
   return { openingBalance, closingBalance: openingBalance + periodFlow };
+}
+
+export function calculateCashPositionForMonth(
+  transactions: Transaction[],
+  month: string,
+  baselineBalance?: number,
+  baselineDate?: string,
+): CashPosition | null {
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month);
+  if (!match || baselineBalance === undefined || !Number.isFinite(baselineBalance) || !baselineDate) return null;
+
+  const periodStartKey = `${match[1]}-${match[2]}-01`;
+  if (baselineDate > periodStartKey) return null;
+
+  const movementsBeforePeriod = transactions.filter((transaction) => {
+    const date = cashDateFor(transaction);
+    if (!date) return false;
+    return transaction.status === "CONFIRMED" && reportIncludes(transaction, "DFC") && date >= baselineDate && date < periodStartKey;
+  });
+  const openingBalance = baselineBalance + calculateCashFlow(movementsBeforePeriod).freeCashFlow;
+  const monthFlow = calculateCashFlow(filterByMonth(transactions, month, "DFC")).freeCashFlow;
+  return { openingBalance, closingBalance: openingBalance + monthFlow };
 }
 
 export function percentChange(current: number, previous: number) {
@@ -432,6 +506,18 @@ export function monthlySeries(transactions: Transaction[], months = 8, reference
 
 export type CategoryTotal = { category: string; amount: number; share: number };
 
+export type DreBreakdownGroup =
+  | "revenue"
+  | "tax"
+  | "direct"
+  | "operating"
+  | "financial-income"
+  | "financial-expense"
+  | "non-operating-income"
+  | "non-operating-expense";
+
+export type DreBreakdownTotal = { group: DreBreakdownGroup; category: string; amount: number };
+
 export function categoryBreakdown(transactions: Transaction[], kind: Transaction["kind"]): CategoryTotal[] {
   const scoped = transactions.filter(
     (transaction) =>
@@ -450,6 +536,39 @@ export function categoryBreakdown(transactions: Transaction[], kind: Transaction
   return [...totals.entries()]
     .map(([category, amount]) => ({ category, amount, share: total ? amount / total : 0 }))
     .sort((a, b) => b.amount - a.amount);
+}
+
+/** Agrupa os lançamentos confirmados com as mesmas regras contábeis usadas no cálculo da DRE. */
+export function dreBreakdown(transactions: Transaction[]): DreBreakdownTotal[] {
+  const scoped = statementTransactions(transactions, "DRE");
+  const totals = new Map<string, DreBreakdownTotal>();
+
+  for (const transaction of scoped) {
+    let group: DreBreakdownGroup | null = null;
+
+    if (transaction.kind === "INCOME") {
+      if (transactionIsOperatingIncome(transaction)) group = "revenue";
+      else if (transactionIsFinancial(transaction)) group = "financial-income";
+      else if (transactionIsNonOperating(transaction)) group = "non-operating-income";
+    } else if (!transactionIsInvestment(transaction) && !transactionIsFinancing(transaction)) {
+      if (transactionIsTax(transaction)) group = "tax";
+      else if (transactionIsDirectCost(transaction)) group = "direct";
+      else if (transactionIsFinancial(transaction)) group = "financial-expense";
+      else if (transactionIsNonOperating(transaction)) group = "non-operating-expense";
+      else group = "operating";
+    }
+
+    if (!group) continue;
+    const key = `${group}\u0000${transaction.category}`;
+    const current = totals.get(key);
+    totals.set(key, {
+      group,
+      category: transaction.category,
+      amount: (current?.amount ?? 0) + transaction.amount,
+    });
+  }
+
+  return [...totals.values()].sort((left, right) => right.amount - left.amount);
 }
 
 function ptNumber(value: number, fractionDigits = 1) {

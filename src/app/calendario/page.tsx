@@ -29,8 +29,8 @@ const KIND_TONES: Record<CalendarEvent["kind"], string> = {
   EVENT: "green",
 };
 
-const WEEKDAYS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const MINI_WEEKDAYS = ["D", "S", "T", "Q", "Q", "S", "S"];
+const SHORT_WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
 type CalendarDay = { date: string; day: number; inMonth: boolean };
 
@@ -51,7 +51,6 @@ export default function CalendarioPage() {
   const notify = useToast();
 
   const month = monthKey(cursor);
-  const { data, loading, error } = useResource<Payload>(`/api/events?month=${month}`);
 
   const [form, setForm] = useState({
     title: "",
@@ -73,6 +72,36 @@ export default function CalendarioPage() {
       return { date: dateKey(date), day: date.getDate(), inMonth: date.getMonth() === cursor.getMonth() };
     });
   }, [cursor]);
+
+  const weekDays = useMemo<CalendarDay[]>(() => {
+    const [year, monthNumber, dayNumber] = selectedDay.split("-").map(Number);
+    const selected = new Date(year, monthNumber - 1, dayNumber);
+    const weekStart = new Date(year, monthNumber - 1, dayNumber - selected.getDay());
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + index);
+      return { date: dateKey(date), day: date.getDate(), inMonth: date.getMonth() === cursor.getMonth() };
+    });
+  }, [cursor, selectedDay]);
+
+  const weekRange = useMemo(() => {
+    const first = weekDays[0]?.date ?? selectedDay;
+    const last = weekDays[6]?.date ?? selectedDay;
+    const firstDate = new Date(`${first}T12:00:00`);
+    const lastDate = new Date(`${last}T12:00:00`);
+    const firstMonth = firstDate.toLocaleDateString("pt-BR", { month: "long" });
+    const lastMonth = lastDate.toLocaleDateString("pt-BR", { month: "long" });
+    const year = lastDate.getFullYear();
+    const label = firstDate.getMonth() === lastDate.getMonth()
+      ? `${firstDate.getDate()}–${lastDate.getDate()} de ${lastMonth} de ${year}`
+      : `${firstDate.getDate()} de ${firstMonth} – ${lastDate.getDate()} de ${lastMonth} de ${year}`;
+    return { first, last, label };
+  }, [selectedDay, weekDays]);
+
+  const monthGridStart = cells[0]?.date ?? `${month}-01`;
+  const monthGridEnd = cells[cells.length - 1]?.date ?? `${month}-28`;
+  const rangeStart = weekRange.first < monthGridStart ? weekRange.first : monthGridStart;
+  const rangeEnd = weekRange.last > monthGridEnd ? weekRange.last : monthGridEnd;
+  const { data, loading, error } = useResource<Payload>(`/api/events?month=${month}&start=${rangeStart}&end=${rangeEnd}`);
 
   const monthOptions = useMemo(
     () => Array.from({ length: 25 }, (_, index) => new Date(cursor.getFullYear(), cursor.getMonth() + index - 12, 1)),
@@ -102,6 +131,13 @@ export default function CalendarioPage() {
     }
   }
 
+  function shiftWeek(delta: number) {
+    const [year, monthNumber, dayNumber] = selectedDay.split("-").map(Number);
+    const next = new Date(year, monthNumber - 1, dayNumber + delta * 7);
+    setSelectedDay(dateKey(next));
+    setCursor(new Date(next.getFullYear(), next.getMonth(), 1));
+  }
+
   function openFormForDay(day: string) {
     selectDay(day);
     setForm((current) => ({ ...current, date: day }));
@@ -114,6 +150,7 @@ export default function CalendarioPage() {
     try {
       await apiFetch("/api/events", { method: "POST", body: JSON.stringify(form) });
       notify("Compromisso agendado.", "success");
+      selectDay(form.date);
       setForm({ ...form, title: "" });
       setFormOpen(false);
     } catch (cause) {
@@ -142,7 +179,22 @@ export default function CalendarioPage() {
   }
 
   function shiftMonth(delta: number) {
-    setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1));
+    const nextMonth = new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1);
+    const selectedDayNumber = Number(selectedDay.slice(8, 10));
+    const lastDay = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0).getDate();
+    const nextDay = new Date(nextMonth.getFullYear(), nextMonth.getMonth(), Math.min(selectedDayNumber, lastDay));
+    setCursor(nextMonth);
+    setSelectedDay(dateKey(nextDay));
+  }
+
+  function chooseMonth(value: string) {
+    const [year, monthNumber] = value.split("-").map(Number);
+    const nextMonth = new Date(year, monthNumber - 1, 1);
+    const selectedDayNumber = Number(selectedDay.slice(8, 10));
+    const lastDay = new Date(year, monthNumber, 0).getDate();
+    const nextDay = new Date(year, monthNumber - 1, Math.min(selectedDayNumber, lastDay));
+    setCursor(nextMonth);
+    setSelectedDay(dateKey(nextDay));
   }
 
   function goToToday() {
@@ -176,10 +228,7 @@ export default function CalendarioPage() {
             <AppSelect
               aria-label="Escolher mês"
               value={month}
-              onChange={(event) => {
-                const [year, monthNumber] = event.target.value.split("-").map(Number);
-                setCursor(new Date(year, monthNumber - 1, 1));
-              }}
+              onChange={(event) => chooseMonth(event.target.value)}
             >
               {monthOptions.map((option) => (
                 <option key={monthKey(option)} value={monthKey(option)}>
@@ -221,7 +270,10 @@ export default function CalendarioPage() {
                 id="date"
                 type="date"
                 value={form.date}
-                onChange={(event) => setForm({ ...form, date: event.target.value })}
+                onChange={(event) => {
+                  setForm({ ...form, date: event.target.value });
+                  if (event.target.value) selectDay(event.target.value);
+                }}
                 required
               />
             </div>
@@ -300,57 +352,57 @@ export default function CalendarioPage() {
           <div className="calendar-main-toolbar">
             <div className="calendar-month-navigation">
               <button className="calendar-today-button" onClick={goToToday}>Hoje</button>
-              <button className="calendar-arrow-button" onClick={() => shiftMonth(-1)} aria-label="Mês anterior">
+              <button className="calendar-arrow-button" onClick={() => shiftWeek(-1)} aria-label="Semana anterior">
                 <ChevronLeft size={16} />
               </button>
-              <button className="calendar-arrow-button" onClick={() => shiftMonth(1)} aria-label="Próximo mês">
+              <button className="calendar-arrow-button" onClick={() => shiftWeek(1)} aria-label="Próxima semana">
                 <ChevronRight size={16} />
               </button>
             </div>
-            <h2>{cursor.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</h2>
+            <h2>{weekRange.label}</h2>
             <span aria-hidden="true" />
           </div>
 
-          <div className="calendar-grid" role="grid" aria-label="Calendário mensal">
-            {WEEKDAYS.map((weekday) => (
-              <div key={weekday} className="calendar-weekday" role="columnheader">{weekday}</div>
-            ))}
-            {cells.map((day) => {
+          <div className="calendar-week-scroll">
+            <div className="calendar-week-grid" role="grid" aria-label={`Semana de ${shortDate(weekRange.first)} a ${shortDate(weekRange.last)}`}>
+              {weekDays.map((day, index) => {
               const events = eventsByDay.get(day.date) ?? [];
               const isToday = day.date === data?.today;
               const isSelected = day.date === selectedDay;
               return (
                 <div
                   key={day.date}
-                  className={`calendar-cell ${day.inMonth ? "" : "outside-month"} ${isToday ? "is-today" : ""} ${isSelected ? "is-selected" : ""}`}
+                  className={`calendar-week-column ${events.length ? "has-events" : ""} ${day.inMonth ? "" : "outside-month"} ${isToday ? "is-today" : ""} ${isSelected ? "is-selected" : ""}`}
                   role="gridcell"
                   aria-selected={isSelected}
                 >
-                  <div className="calendar-cell-topline">
-                    <button className="calendar-day-select" onClick={() => selectDay(day.date)} aria-label={`Selecionar dia ${day.day}`}>
+                  <div className="calendar-week-heading">
+                    <span className="calendar-weekday-label">{SHORT_WEEKDAYS[index]}</span>
+                    <button className="calendar-day-select" onClick={() => selectDay(day.date)} aria-label={`Selecionar dia ${shortDate(day.date)}`}>
                       <span className="calendar-day">{day.day}</span>
                     </button>
-                    <button className="calendar-add-event" onClick={() => openFormForDay(day.date)} aria-label={`Novo compromisso no dia ${day.day}`}>
-                      <Plus size={14} />
-                    </button>
                   </div>
-                  <div className="calendar-dots">
-                    {events.slice(0, 2).map((event) => (
-                      <span
+                  <div className="calendar-week-events">
+                    {events.slice(0, 4).map((event) => (
+                      <button
                         key={event.id}
-                        className={`calendar-chip ${KIND_TONES[event.kind]}`}
-                        style={event.done ? { opacity: 0.55, textDecoration: "line-through" } : undefined}
+                        className={`calendar-week-event ${KIND_TONES[event.kind]} ${event.done ? "is-done" : ""}`}
                         title={`${event.time} · ${event.title}`}
+                        onClick={() => selectDay(day.date)}
                       >
-                        <span>{event.time}</span> {event.title}
-                      </span>
+                        <span>{event.time}</span>
+                        <strong>{event.title}</strong>
+                      </button>
                     ))}
-                    {events.length > 2 && <span className="calendar-more">+{events.length - 2} outros</span>}
-                    <span className="calendar-event-indicator" aria-hidden="true">{events.length}</span>
+                    {events.length > 4 && <span className="calendar-more">+{events.length - 4} outros</span>}
                   </div>
+                  <button className="calendar-week-add" onClick={() => openFormForDay(day.date)} aria-label={`Adicionar compromisso em ${shortDate(day.date)}`}>
+                    <Plus size={13} /> <span>Adicionar</span>
+                  </button>
                 </div>
               );
-            })}
+              })}
+            </div>
           </div>
         </div>
 

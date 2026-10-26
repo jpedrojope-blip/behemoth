@@ -81,6 +81,10 @@ function validHuman(db: Database, memberId: string | null) {
   return !memberId || db.team.some((member) => member.id === memberId && member.type === "HUMAN");
 }
 
+function validTeamMember(db: Database, memberId: string | null) {
+  return !memberId || db.team.some((member) => member.id === memberId);
+}
+
 export async function GET(request: Request) {
   return withWorkspaceDatabase(request, (db) => NextResponse.json({
     tasks: db.teamTasks,
@@ -98,7 +102,7 @@ export async function POST(request: Request) {
     const input = parsed.data;
 
     if (input.action === "createTask") {
-      if (!validHuman(db, input.data.assigneeId)) return failure("Selecione um funcionário válido da equipe.", 400);
+      if (!validTeamMember(db, input.data.assigneeId)) return failure("Selecione um integrante válido da equipe.", 400);
       const task: TeamTask = { id: createId("task"), ...input.data, createdAt: now, updatedAt: now };
       db.teamTasks.unshift(task);
       recordAudit(db, "CREATE", "team_task", task.id);
@@ -133,8 +137,8 @@ export async function PATCH(request: Request) {
     if (input.action === "updateTask") {
       const task = db.teamTasks.find((entry) => entry.id === input.id);
       if (!task) return failure("Tarefa não encontrada.", 404);
-      if (input.data.assigneeId !== undefined && !validHuman(db, input.data.assigneeId)) {
-        return failure("Selecione um funcionário válido da equipe.", 400);
+      if (input.data.assigneeId !== undefined && !validTeamMember(db, input.data.assigneeId)) {
+        return failure("Selecione um integrante válido da equipe.", 400);
       }
       Object.assign(task, input.data, { updatedAt: new Date().toISOString() });
       recordAudit(db, "UPDATE", "team_task", task.id);

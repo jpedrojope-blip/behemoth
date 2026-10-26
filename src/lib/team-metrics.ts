@@ -15,9 +15,7 @@ function isFromCurrentMonth(date: string) {
 }
 
 export function teamMemberProfile(db: Database, member: TeamMember): TeamMemberProfile {
-  const tasks = member.type === "HUMAN"
-    ? db.teamTasks.filter((task) => task.assigneeId === member.id)
-    : [];
+  const tasks = db.teamTasks.filter((task) => task.assigneeId === member.id);
   const completedTasks = tasks.filter((task) => task.status === "DONE").length;
   const nextTask = tasks
     .filter((task) => task.status !== "DONE")
@@ -41,16 +39,27 @@ export function teamMemberProfile(db: Database, member: TeamMember): TeamMemberP
     phone: member.phone ?? "",
     department: member.department ?? "",
     location: member.location ?? "",
+    locationState: member.locationState ?? "",
+    locationCity: member.locationCity ?? "",
+    bio: member.bio ?? "",
+    startDate: member.startDate ?? "",
+    manager: member.manager ?? "",
+    employmentType: member.employmentType ?? "",
+    skills: member.skills ?? [],
     type: member.type,
     role: member.role,
     monthlyCost: member.monthlyCost ?? 0,
+    agentProvider: member.agentProvider ?? "",
+    agentModel: member.agentModel ?? "",
+    agentPurpose: member.agentPurpose ?? "",
+    agentIntegrations: member.agentIntegrations ?? [],
     status: member.status,
     metrics: {
       assignedTasks: tasks.length,
       completedTasks,
       completionRate: tasks.length ? Math.round((completedTasks / tasks.length) * 100) : 0,
       finalizedValue,
-      roi: member.monthlyCost > 0 ? Math.round((finalizedValue / member.monthlyCost) * 100) : null,
+      roi: member.type === "HUMAN" && member.monthlyCost > 0 ? Math.round((finalizedValue / member.monthlyCost) * 100) : null,
       nextTaskTitle: nextTask?.title ?? null,
       nextTaskDueDate: nextTask?.dueDate ?? null,
     },
@@ -62,7 +71,7 @@ export function summarizeTeam(db: Database) {
   const humans = profiles.filter((member) => member.type === "HUMAN");
   const agents = profiles.filter((member) => member.type === "AI");
   const active = profiles.filter((member) => member.status === "ACTIVE");
-  const membersWithTasks = humans.filter((member) => member.metrics.assignedTasks > 0);
+  const membersWithTasks = profiles.filter((member) => member.metrics.assignedTasks > 0);
   const monthlyCost = active.reduce((total, member) => total + member.monthlyCost, 0);
   const activeHumans = active.filter((member) => member.type === "HUMAN");
   const humanCost = activeHumans.reduce((total, member) => total + member.monthlyCost, 0);

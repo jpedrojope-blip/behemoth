@@ -62,7 +62,7 @@ const AUTOMATION_LABELS: { key: keyof Automations; label: string; hint: string }
   {
     key: "teamCostToExpenses",
     label: "Custo da equipe vira despesa",
-    hint: "O custo mensal dos integrantes ativos entra no financeiro como despesa do mês.",
+    hint: "O custo mensal dos integrantes ativos aparece como estimativa pendente até ser confirmado.",
   },
   {
     key: "actionItemsToCalendar",

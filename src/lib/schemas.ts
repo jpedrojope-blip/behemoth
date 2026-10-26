@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { BRAZILIAN_STATE_CODES } from "@/lib/locations";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}/, "Data inválida").transform((value) => value.slice(0, 10));
 const money = z.coerce.number().positive("O valor precisa ser maior que zero.");
@@ -14,11 +15,14 @@ export const transactionCreateSchema = z.object({
   date: isoDate.optional(),
   competenceDate: isoDate.optional(),
   cashDate: isoDate.optional(),
-  financialReport: z.enum(["BOTH", "DRE", "DFC"]).default("BOTH"),
+  financialReport: z.enum(["BOTH", "DRE", "DFC"]).default("DRE"),
   costBehavior: z.enum(["AUTO", "FIXED", "VARIABLE"]).optional(),
   status: z.enum(["CONFIRMED", "PENDING"]).default("CONFIRMED"),
   recurrence: z.enum(["NONE", "MONTHLY"]).default("NONE"),
   source: z.string().trim().optional(),
+}).refine((value) => value.financialReport !== "BOTH" || Boolean(value.cashDate), {
+  path: ["cashDate"],
+  message: "Informe a data de liquidação para incluir o lançamento também no fluxo de caixa.",
 });
 
 export const transactionUpdateSchema = z.object({
@@ -44,7 +48,18 @@ export const teamCreateSchema = z.object({
   phone: z.string().trim().max(30).default(""),
   department: z.string().trim().max(80).default(""),
   location: z.string().trim().max(120).default(""),
+  locationState: z.enum(BRAZILIAN_STATE_CODES).or(z.literal("")).default(""),
+  locationCity: z.string().trim().max(80).default(""),
+  bio: z.string().trim().max(320).default(""),
+  startDate: z.union([isoDate, z.literal("")]).default(""),
+  manager: z.string().trim().max(100).default(""),
+  employmentType: z.enum(["CLT", "PJ", "INTERN", "TEMPORARY", "OTHER", ""]).default(""),
+  skills: z.array(z.string().trim().min(1).max(48)).max(12).default([]),
   monthlyCost: z.coerce.number().min(0).default(0),
+  agentProvider: z.string().trim().max(80).default(""),
+  agentModel: z.string().trim().max(120).default(""),
+  agentPurpose: z.string().trim().max(320).default(""),
+  agentIntegrations: z.array(z.string().trim().min(1).max(48)).max(12).default([]),
   status: z.enum(["ACTIVE", "REVIEW"]).default("ACTIVE"),
 });
 

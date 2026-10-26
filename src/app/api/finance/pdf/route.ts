@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 type Kind = "INCOME" | "EXPENSE";
 type Group = "RECEITA" | "IMPOSTO" | "CMV" | "RH" | "ADMINISTRATIVA" | "VENDAS" | "FINANCEIRA" | "INVESTIMENTO" | "NAO_OPERACIONAL" | "FINANCIAMENTO" | "OUTROS";
-type Line = { name: string; amount: number; kind: Kind; group: Group; fixedness: "FIXO" | "VARIAVEL" | "MISTO" | "NAO_CLASSIFICADO"; total: boolean };
+type Line = { name: string; amount: number; kind: Kind; group: Group; fixedness: "FIXO" | "VARIAVEL" | "MISTO" | "NAO_CLASSIFICADO"; total: boolean; dreEligible: boolean; cashEligible: boolean };
 type ImportedTransaction = {
   date: string;
   description: string;
@@ -24,10 +24,16 @@ type ImportedTransaction = {
 };
 const MONEY = /(?:R\$\s*)?-?\d{1,3}(?:\.\d{3})*,\d{2}|(?:R\$\s*)?-?\d+(?:\.\d{2})/g;
 
-function normalized(value: string) { return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
+function normalized(value: string) { return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim(); }
 function amount(value: string) { const clean = value.replace(/R\$\s*/g, "").trim(); return Number(clean.includes(",") ? clean.replace(/\./g, "").replace(",", ".") : clean); }
+function signedLineAmount(raw: string, matched: string) {
+  const value = amount(matched);
+  const prefix = raw.slice(0, raw.lastIndexOf(matched));
+  return /[−–—-]\s*(?:R\$\s*)?$/.test(prefix) ? -Math.abs(value) : value;
+}
 function groupFor(name: string): Group {
   const v = normalized(name);
+  if (/manutenc|repar|conserto|reparo/.test(v)) return "OUTROS";
   if (/imposto|simples( nacional)?|icms|iss\b|pis\b|cofins|tribut/.test(v)) return "IMPOSTO";
   if (/cmv|custo da mercadoria|fornecedor|insumo|embalagem|compra para revenda/.test(v)) return "CMV";
   if (/salario|folha|fgts|pro.?labore|vale transporte|beneficio|rh\b/.test(v)) return "RH";
@@ -35,7 +41,7 @@ function groupFor(name: string): Group {
   if (/combustivel|design|maquininha|comissao|marketing|frete/.test(v)) return "VENDAS";
   if (/juros|tarifas? bancaria|taxas? bancaria|rendimento|aplicacao financeira|financeir/.test(v)) return "FINANCEIRA";
   if (/divida|aporte.*soci|dividendo|emprestimo|financiamento/.test(v)) return "FINANCIAMENTO";
-  if (/investimento|equipamento|imobilizado|aquisicao/.test(v)) return "INVESTIMENTO";
+  if (/investimento|imobilizado|obra estrutural|capex|(?:aquisicao|compra) de (?:equipamento|imobilizado)|compra.*(?:maquina|veiculo)/.test(v)) return "INVESTIMENTO";
   if (/nao operacional|extraordinari|indenizacao/.test(v)) return "NAO_OPERACIONAL";
   if (/\bvd(?:[-\s]?\d+)?\b|receita|venda|faturamento|revenda|delivery|recebimento|cliente/.test(v)) return "RECEITA";
   return "OUTROS";
@@ -43,54 +49,92 @@ function groupFor(name: string): Group {
 function fixedness(group: Group): Line["fixedness"] { return group === "CMV" || group === "IMPOSTO" ? "VARIAVEL" : group === "RH" || group === "ADMINISTRATIVA" ? "FIXO" : group === "VENDAS" ? "MISTO" : "NAO_CLASSIFICADO"; }
 function kindFor(name: string, value: number, group: Group): Kind {
   if (value < 0) return "EXPENSE";
+  if (/lucro liquido|lucro bruto|resultado financeiro|resultado operacional|resultado nao operacional|resultado liquido/.test(normalized(name))) return "INCOME";
   if (group === "RECEITA") return "INCOME";
   if ((group === "FINANCEIRA" || group === "NAO_OPERACIONAL" || group === "FINANCIAMENTO") && /receita|rendimento|aporte|aumento de divida|aumento divida/.test(normalized(name))) return "INCOME";
   return "EXPENSE";
 }
 function isAggregateName(name: string) {
-  return /^(total|subtotal|receita bruta total|receita liquida|lucro bruto|lucro liquido|resultado liquido|fluxo de caixa|margem|resultado do periodo)/i.test(normalized(name).trim());
+  const value = normalized(name).replace(/^[^a-z0-9]+/, "").replace(/\s+/g, " ").trim();
+  return /^(?:total|subtotal|receita bruta(?: total)?|faturamento bruto|receita liquida|lucro bruto|lucro liquido|resultado liquido|resultado operacional|resultado financeiro|resultado nao operacional|despesas? operacionais|custos? operacionais|fluxo de caixa(?: livre)?|margem(?: bruta| liquida| operacional)?|resultado do periodo)(?:\b|$)/i.test(value);
 }
 function linesFrom(text: string): Line[] {
   return text.split(/\r?\n/).flatMap((raw) => {
     const values = raw.match(MONEY); if (!values?.length) return [];
     const name = raw.replace(MONEY, "").replace(/[|;]+/g, " ").replace(/\s+/g, " ").trim();
-    const value = amount(values.at(-1) ?? ""); if (!name || isAggregateName(name) || !Number.isFinite(value) || value === 0) return [];
+    const value = signedLineAmount(raw, values.at(-1) ?? ""); if (!name || !Number.isFinite(value) || value === 0) return [];
     const group = groupFor(name);
-    return [{ name, amount: Math.abs(value), kind: kindFor(name, value, group), group, fixedness: fixedness(group), total: /total|lucro|resultado|margem|receita liquida|fluxo de caixa/i.test(normalized(name)) }];
+    return [{ name, amount: Math.abs(value), kind: kindFor(name, value, group), group, fixedness: fixedness(group), total: isAggregateName(name), dreEligible: true, cashEligible: false }];
   }).slice(0, 500);
 }
 function sum(lines: Line[], group: Group, kind?: Kind) { return lines.filter((line) => line.group === group && !line.total && (!kind || line.kind === kind)).reduce((total, line) => total + line.amount, 0); }
-function named(lines: Line[], matcher: RegExp) { return lines.find((line) => matcher.test(normalized(line.name)))?.amount; }
+function named(lines: Line[], matcher: RegExp) { return lines.find((line) => line.total && matcher.test(normalized(line.name)))?.amount; }
 function analysis(lines: Line[]) {
-  const grossRevenue = named(lines, /receita bruta|faturamento bruto/) ?? sum(lines, "RECEITA", "INCOME");
-  const taxes = named(lines, /impostos? sobre a receita|deduc.*receita/) ?? sum(lines, "IMPOSTO", "EXPENSE");
-  const netRevenue = named(lines, /receita liquida/) ?? grossRevenue - taxes;
-  const cmv = named(lines, /\bcmv\b|custo.*mercadoria|custos? variaveis/) ?? sum(lines, "CMV", "EXPENSE");
-  const grossProfit = named(lines, /lucro bruto/) ?? netRevenue - cmv;
-  const operatingExpenses = sum(lines, "RH", "EXPENSE") + sum(lines, "ADMINISTRATIVA", "EXPENSE") + sum(lines, "VENDAS", "EXPENSE") + sum(lines, "OUTROS", "EXPENSE");
-  const financialIncome = sum(lines, "FINANCEIRA", "INCOME"), financialExpense = sum(lines, "FINANCEIRA", "EXPENSE");
-  const nonOperatingIncome = sum(lines, "NAO_OPERACIONAL", "INCOME"), nonOperatingExpense = sum(lines, "NAO_OPERACIONAL", "EXPENSE");
-  const financialResult = financialIncome - financialExpense, nonOperatingResult = nonOperatingIncome - nonOperatingExpense;
-  const netProfit = named(lines, /lucro liquido|resultado liquido/) ?? grossProfit - operatingExpenses + financialResult + nonOperatingResult;
-  const operationalCashFlow = grossRevenue - taxes - cmv - operatingExpenses + financialResult;
-  const investments = sum(lines, "INVESTIMENTO", "EXPENSE"), financingIn = sum(lines, "FINANCIAMENTO", "INCOME"), financingOut = sum(lines, "FINANCIAMENTO", "EXPENSE");
-  const freeCashFlow = operationalCashFlow + nonOperatingResult - investments + financingIn - financingOut;
-  const cashIn = grossRevenue + financialIncome + nonOperatingIncome + financingIn;
-  const cashOut = taxes + cmv + operatingExpenses + financialExpense + nonOperatingExpense + investments + financingOut;
-  const projectedFixedOutflow = lines.filter((line) => line.kind === "EXPENSE" && line.fixedness === "FIXO" && !line.total).reduce((total, line) => total + line.amount, 0);
-  return { detected: lines.length > 0, planOfAccounts: lines.slice(0, 80), summary: { grossRevenue, taxes, netRevenue, cmv, grossProfit, operatingExpenses, financialIncome, financialExpense, financialResult, nonOperatingIncome, nonOperatingExpense, nonOperatingResult, investments, financingIn, financingOut, netProfit, grossMargin: grossRevenue ? grossProfit / grossRevenue * 100 : null, netMargin: grossRevenue ? netProfit / grossRevenue * 100 : null, cashIn, cashOut, operationalCashFlow, freeCashFlow, projectedFixedOutflow }, verticalAnalysis: lines.filter((line) => !line.total).slice(0, 30).map((line) => ({ ...line, percentOfRevenue: grossRevenue ? line.amount / grossRevenue * 100 : null })), warnings: ["DRE usa competência e DFC usa caixa. Confirme a classificação antes de importar.", "A projeção considera somente as despesas fixas identificadas; receitas futuras não são inventadas."] };
+  const dreLines = lines.filter((line) => line.dreEligible);
+  const detailLines = dreLines.filter((line) => !line.total);
+  const hasDetailRows = detailLines.length > 0;
+  const revenueDetails = sum(dreLines, "RECEITA", "INCOME");
+  const grossRevenue = revenueDetails || named(dreLines, /receita bruta|faturamento bruto/) || 0;
+  const taxDetails = sum(dreLines, "IMPOSTO", "EXPENSE");
+  const taxes = taxDetails || named(dreLines, /impostos? sobre a receita|deduc.*receita|impostos?/) || 0;
+  const netRevenue = revenueDetails || taxDetails ? grossRevenue - taxes : named(dreLines, /receita liquida/) ?? grossRevenue - taxes;
+  const cmvDetails = sum(dreLines, "CMV", "EXPENSE");
+  const cmv = cmvDetails || named(dreLines, /\bcmv\b|custo.*mercadoria|custos? variaveis/) || 0;
+  const grossProfit = (revenueDetails || taxDetails || cmvDetails)
+    ? netRevenue - cmv
+    : named(dreLines, /lucro bruto/) ?? netRevenue - cmv;
+  const operatingDetailRows = detailLines.filter((line) => ["RH", "ADMINISTRATIVA", "VENDAS", "OUTROS"].includes(line.group) && line.kind === "EXPENSE");
+  const operatingExpenses = operatingDetailRows.length
+    ? operatingDetailRows.reduce((total, line) => total + line.amount, 0)
+    : named(dreLines, /despesas? operacionais/) ?? 0;
+  const financialIncome = sum(dreLines, "FINANCEIRA", "INCOME"), financialExpense = sum(dreLines, "FINANCEIRA", "EXPENSE");
+  const nonOperatingIncome = sum(dreLines, "NAO_OPERACIONAL", "INCOME"), nonOperatingExpense = sum(dreLines, "NAO_OPERACIONAL", "EXPENSE");
+  const financialDetails = sum(dreLines, "FINANCEIRA");
+  const nonOperatingDetails = sum(dreLines, "NAO_OPERACIONAL");
+  const signedSummary = (matcher: RegExp) => {
+    const row = dreLines.find((line) => line.total && matcher.test(normalized(line.name)));
+    return row ? (row.kind === "EXPENSE" ? -row.amount : row.amount) : null;
+  };
+  const financialResult = financialDetails ? financialIncome - financialExpense : signedSummary(/resultado financeiro/) ?? 0;
+  const nonOperatingResult = nonOperatingDetails ? nonOperatingIncome - nonOperatingExpense : signedSummary(/resultado nao operacional/) ?? 0;
+  const operationalResult = grossProfit - operatingExpenses;
+  const netProfit = hasDetailRows
+    ? operationalResult + financialResult + nonOperatingResult
+    : signedSummary(/lucro liquido|resultado liquido/) ?? operationalResult + financialResult + nonOperatingResult;
+  const investments = sum(dreLines, "INVESTIMENTO", "EXPENSE"), financingIn = sum(dreLines, "FINANCIAMENTO", "INCOME"), financingOut = sum(dreLines, "FINANCIAMENTO", "EXPENSE");
+  const cashLines = lines.filter((line) => line.cashEligible && !line.total);
+  const cashIn = cashLines.filter((line) => line.kind === "INCOME").reduce((total, line) => total + line.amount, 0);
+  const cashOut = cashLines.filter((line) => line.kind === "EXPENSE").reduce((total, line) => total + line.amount, 0);
+  const freeCashFlow = cashLines.length ? cashIn - cashOut : null;
+  const projectedFixedOutflow = detailLines.filter((line) => line.kind === "EXPENSE" && line.fixedness === "FIXO").reduce((total, line) => total + line.amount, 0);
+  const warnings = ["DRE usa competência e DFC usa caixa. Revise a classificação de cada lançamento antes de importar."];
+  if (!cashLines.length) warnings.push("Não há lançamentos com data de liquidação confirmada; a DRE não foi usada para estimar fluxo de caixa.");
+  warnings.push("Os valores de resumo servem como referência quando não há linhas detalhadas; confira eventuais diferenças antes de confirmar.");
+  const money = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+  const reconciliationRows: Array<{ label: string; detailed: number; summary: number | null | undefined }> = [
+    { label: "Receita bruta", detailed: revenueDetails, summary: named(dreLines, /receita bruta|faturamento bruto/) },
+    { label: "Impostos", detailed: taxDetails, summary: named(dreLines, /impostos? sobre a receita|deduc.*receita|total.*impostos?/) },
+    { label: "CMV", detailed: cmvDetails, summary: named(dreLines, /\bcmv\b|custo.*mercadoria|custos? variaveis/) },
+    { label: "Despesas operacionais", detailed: operatingDetailRows.reduce((total, line) => total + line.amount, 0), summary: named(dreLines, /despesas? operacionais/) },
+    { label: "Lucro líquido", detailed: operationalResult + financialResult + nonOperatingResult, summary: signedSummary(/lucro liquido|resultado liquido/) },
+  ];
+  for (const row of reconciliationRows) {
+    if (!row.detailed || row.summary === null || row.summary === undefined || Math.abs(Math.abs(row.summary) - row.detailed) < 0.01) continue;
+    warnings.push(`${row.label}: os lançamentos detalhados somam ${money(row.detailed)}, enquanto o resumo do arquivo informa ${money(Math.abs(row.summary))}. Revise a conciliação.`);
+  }
+  return { detected: lines.length > 0, planOfAccounts: lines.slice(0, 80), summary: { grossRevenue, taxes, netRevenue, cmv, grossProfit, operatingExpenses, financialIncome, financialExpense, financialResult, nonOperatingIncome, nonOperatingExpense, nonOperatingResult, investments, financingIn, financingOut, netProfit, grossMargin: netRevenue ? grossProfit / netRevenue * 100 : null, netMargin: netRevenue ? netProfit / netRevenue * 100 : null, cashIn, cashOut, operationalCashFlow: null, freeCashFlow, projectedFixedOutflow }, verticalAnalysis: detailLines.slice(0, 30).map((line) => ({ ...line, percentOfRevenue: grossRevenue ? line.amount / grossRevenue * 100 : null })), warnings };
 }
 function transactions(text: string): ImportedTransaction[] {
   const datePattern = /(\d{2}[\/-]\d{2}[\/-]\d{4}|\d{4}-\d{2}-\d{2})/;
   return text.split(/\r?\n/).flatMap((raw) => {
     const date = raw.match(datePattern), values = raw.match(MONEY); if (!date || !values?.length) return [];
     const parsedDate = toIsoDate(date[1]);
-    const value = amount(values.at(-1) ?? "");
+    const value = signedLineAmount(raw, values.at(-1) ?? "");
     if (!parsedDate || !Number.isFinite(value) || value === 0) return [];
     const description = raw.replace(date[0], "").replace(MONEY, "").replace(/\s+/g, " ").trim() || "Lançamento importado";
     if (isAggregateName(description)) return [];
     const group = groupFor(description), kind = kindFor(description, value, group);
-    return [{ date: parsedDate, description, amount: Math.abs(value), kind, category: group === "RECEITA" ? "Receita" : group, financialReport: "BOTH" as const }];
+    return [{ date: parsedDate, competenceDate: parsedDate, description, amount: Math.abs(value), kind, category: group === "RECEITA" ? "Receita" : group, financialReport: "DRE" as const }];
   }).slice(0, 10_000);
 }
 
@@ -122,10 +166,12 @@ function valueAsNumber(value: unknown): number | null {
 
 function reportFor(value: unknown): ImportedTransaction["financialReport"] {
   const text = normalized(String(value ?? ""));
-  if (text.includes("dre") && text.includes("dfc")) return "BOTH";
-  if (text.includes("dre")) return "DRE";
-  if (text.includes("dfc")) return "DFC";
-  return "BOTH";
+  const includesDre = text.includes("dre") || text.includes("demonstracao de resultado");
+  const includesCash = text.includes("dfc") || text.includes("fluxo de caixa") || /\bcaixa\b/.test(text);
+  if ((includesDre && includesCash) || text.includes("both") || text.includes("ambos") || text.includes("ambas")) return "BOTH";
+  if (includesDre) return "DRE";
+  if (includesCash) return "DFC";
+  return "DRE";
 }
 
 function behaviorFor(group: Group): ImportedTransaction["costBehavior"] {
@@ -174,13 +220,16 @@ function headerColumns(row: unknown[]) {
   };
 }
 
-function parseWorkbookTransactions(buffer: Buffer) {
-  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
+function parseWorkbookTransactions(buffer: Buffer, isCsv = false) {
+  const workbook = isCsv
+    ? XLSX.read(buffer.toString("utf8"), { type: "string", cellDates: true })
+    : XLSX.read(buffer, { type: "buffer", cellDates: true });
   const rows: ImportedTransaction[] = [];
   const warnings: string[] = [];
   let recognizedSheets = 0;
   let missingReportColumn = false;
   let rowsWithoutReportClassification = 0;
+  let bothWithoutCashDate = 0;
   let uncategorizedRows = 0;
   for (const sheetName of workbook.SheetNames) {
     const normalizedSheet = normalized(sheetName);
@@ -212,7 +261,10 @@ function parseWorkbookTransactions(buffer: Buffer) {
       const value = valueAsNumber(row[columns.amount]);
       const competenceDate = columns.competence >= 0 ? toIsoDate(row[columns.competence]) : null;
       const cashDate = columns.cash >= 0 ? toIsoDate(row[columns.cash]) : null;
-      const date = competenceDate ?? cashDate ?? (columns.date >= 0 ? toIsoDate(row[columns.date]) : null);
+      const dateColumn = columns.date >= 0 ? toIsoDate(row[columns.date]) : null;
+      const declaredReport = columns.report >= 0 ? reportFor(row[columns.report]) : "DRE";
+      const financialReport = declaredReport === "BOTH" && !cashDate ? "DRE" : declaredReport;
+      const date = financialReport === "DFC" ? cashDate ?? dateColumn : competenceDate ?? cashDate ?? dateColumn;
       if (!date || !description || !value || isAggregateName(description)) continue;
 
       const group = groupForAccountCode(accountCodeValue, `${String(categoryValue ?? "")} ${description}`);
@@ -221,7 +273,8 @@ function parseWorkbookTransactions(buffer: Buffer) {
       const kind: Kind = value < 0 ? "EXPENSE" : /saida|despesa|debito|expense/.test(kindCell) ? "EXPENSE" : /entrada|receita|credito|income/.test(kindCell) ? "INCOME" : sheetKind ?? kindFor(`${description} ${String(categoryValue ?? "")}`, value, group);
       const category = String(categoryValue ?? "").trim() || (kind === "INCOME" ? "Receita" : group);
       if (group === "OUTROS") uncategorizedRows += 1;
-      if (columns.report >= 0 && !/dre|dfc/i.test(String(row[columns.report] ?? ""))) rowsWithoutReportClassification += 1;
+      if (columns.report >= 0 && !/dre|dfc|both|ambos|ambas|caixa/i.test(String(row[columns.report] ?? ""))) rowsWithoutReportClassification += 1;
+      if (declaredReport === "BOTH" && !cashDate) bothWithoutCashDate += 1;
       rows.push({
         date,
         ...(competenceDate ? { competenceDate } : {}),
@@ -231,7 +284,7 @@ function parseWorkbookTransactions(buffer: Buffer) {
         kind,
         category,
         ...(accountCodeText && /^\d+(?:\.\d+)*$/.test(accountCodeText) ? { accountCode: accountCodeText } : {}),
-        financialReport: columns.report >= 0 ? reportFor(row[columns.report]) : "BOTH",
+        financialReport,
         ...(kind === "EXPENSE" && behaviorForAccountCode(accountCodeValue, group) ? { costBehavior: behaviorForAccountCode(accountCodeValue, group) } : {}),
       });
       if (rows.length >= 10_000) break;
@@ -240,7 +293,8 @@ function parseWorkbookTransactions(buffer: Buffer) {
   }
   if (!recognizedSheets) warnings.push("Não encontramos uma tabela com descrição, data e valor. Planilhas de resumo sem lançamentos detalhados não são importadas como transações.");
   if (rows.length >= 10_000) warnings.push("O arquivo excede o limite de segurança de 10.000 lançamentos; os demais não foram incluídos.");
-  if (missingReportColumn || rowsWithoutReportClassification) warnings.push("Classificação DRE/DFC ausente em algumas linhas: esses lançamentos entram nos dois relatórios até você revisá-los.");
+  if (missingReportColumn || rowsWithoutReportClassification) warnings.push("Classificação DRE/DFC ausente em algumas linhas: elas foram encaminhadas somente à DRE até você revisá-las.");
+  if (bothWithoutCashDate) warnings.push(`${bothWithoutCashDate} lançamento(s) marcados para DRE e caixa não tinham data de liquidação; foram mantidos somente na DRE para não presumir movimentação de caixa.`);
   if (uncategorizedRows) warnings.push(`${uncategorizedRows} lançamento(s) ficaram em “Outros” porque a categoria não pôde ser reconhecida; revise antes de usar os indicadores de custos e margens.`);
   if (workbook.SheetNames.some((name) => /cmv/i.test(name))) warnings.push("A aba CMV com custo e markup por produto foi detectada, mas o cadastro de produtos ainda não é importado; só as linhas detalhadas de Entradas e Saídas viram lançamentos.");
   if (recognizedSheets) warnings.push("Revise a classificação e as categorias antes de confirmar; depois, Início e Finanças recalculam os indicadores a partir dos lançamentos salvos.");
@@ -250,7 +304,16 @@ function parseWorkbookTransactions(buffer: Buffer) {
 function linesFromTransactions(items: ImportedTransaction[]): Line[] {
   return items.map((item) => {
     const group = groupForAccountCode(item.accountCode, `${item.category} ${item.description}`);
-    return { name: item.category || item.description, amount: item.amount, kind: item.kind, group, fixedness: fixedness(group), total: false };
+    return {
+      name: item.description || item.category,
+      amount: item.amount,
+      kind: item.kind,
+      group,
+      fixedness: fixedness(group),
+      total: false,
+      dreEligible: item.financialReport !== "DFC",
+      cashEligible: item.financialReport === "DFC" || (item.financialReport === "BOTH" && Boolean(item.cashDate)),
+    };
   });
 }
 
@@ -315,23 +378,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Não foi possível validar sua sessão. Entre novamente." }, { status: 503 });
   }
   const formData = await request.formData(), file = formData.get("file");
-  if (!(file instanceof File)) return NextResponse.json({ error: "Selecione um arquivo PDF, Excel ou Word (.docx)." }, { status: 400 });
+  if (!(file instanceof File)) return NextResponse.json({ error: "Selecione um arquivo PDF, Excel, CSV ou Word (.docx)." }, { status: 400 });
   const extension = file.name.toLowerCase().split(".").pop();
   const isPdf = extension === "pdf" || file.type === "application/pdf";
-  const isSheet = extension === "xlsx" || extension === "xls";
+  const isCsv = extension === "csv";
+  const isSheet = extension === "xlsx" || extension === "xls" || isCsv;
   const isWord = extension === "docx";
-  if (!isPdf && !isSheet && !isWord) return NextResponse.json({ error: "Formato não compatível. Envie PDF, Excel (.xlsx/.xls) ou Word (.docx)." }, { status: 400 });
+  if (!isPdf && !isSheet && !isWord) return NextResponse.json({ error: "Formato não compatível. Envie PDF, Excel (.xlsx/.xls), CSV ou Word (.docx)." }, { status: 400 });
   if (file.size > 10 * 1024 * 1024) return NextResponse.json({ error: "O arquivo deve ter no máximo 10 MB." }, { status: 413 });
   const buffer = Buffer.from(await file.arrayBuffer()); let text = "", pages = 0;
   let parsedTransactions: ImportedTransaction[] = [];
   let warnings: string[] = [];
   if (isSheet) {
     try {
-      const parsed = parseWorkbookTransactions(buffer);
+      const parsed = parseWorkbookTransactions(buffer, isCsv);
       parsedTransactions = parsed.transactions;
       warnings = parsed.warnings;
     } catch {
-      return NextResponse.json({ error: "Não foi possível abrir esta planilha. Confira se o arquivo Excel não está protegido ou corrompido." }, { status: 422 });
+      return NextResponse.json({ error: isCsv ? "Não foi possível interpretar este CSV. Confira os cabeçalhos e a codificação do arquivo." : "Não foi possível abrir esta planilha. Confira se o arquivo Excel não está protegido ou corrompido." }, { status: 422 });
     }
   } else if (isWord) {
     try { text = extractDocxText(buffer); }
@@ -352,7 +416,7 @@ export async function POST(request: Request) {
   const financialAnalysis = analysis(lines);
   financialAnalysis.warnings.push(...warnings);
   if (!isSheet && parsedTransactions.length) {
-    financialAnalysis.warnings.push("PDF/Word: categorias são sugeridas pelo texto e as linhas entram nos dois relatórios; confira cada lançamento antes de confirmar.");
+    financialAnalysis.warnings.push("PDF/Word: os lançamentos foram classificados somente na DRE; o caixa não é presumido sem uma data de liquidação.");
   }
   return NextResponse.json({ fileName: file.name, pages, transactions: parsedTransactions, analysis: financialAnalysis });
 }

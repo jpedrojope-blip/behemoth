@@ -6,6 +6,7 @@ import Link from "next/link";
 import {
   ArrowDownRight,
   ArrowRight,
+  Bot,
   BriefcaseBusiness,
   CalendarDays,
   Check,
@@ -73,7 +74,8 @@ export function PipelineBoard() {
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const notify = useToast();
 
-  const team = (teamData?.team ?? []).filter((member) => member.type === "HUMAN");
+  const team = teamData?.team ?? [];
+  const employees = team.filter((member) => member.type === "HUMAN");
   const tasks = data?.tasks ?? EMPTY_TASKS;
   const stages = data?.stages ?? [];
   const opportunities = data?.opportunities ?? [];
@@ -197,7 +199,7 @@ export function PipelineBoard() {
         <div>
           <p className="eyebrow">ROTINA E VENDAS</p>
           <h1 className="page-title">Pipeline</h1>
-          <p className="subtitle">Organize o que cada pessoa precisa fazer e acompanhe seus negócios por etapa.</p>
+          <p className="subtitle">Organize as tarefas de funcionários e agentes e acompanhe os negócios por etapa.</p>
         </div>
         {view === "team" ? (
           <button className="btn btn-primary" onClick={() => showTaskForm ? setShowTaskForm(false) : openTaskForm()}>
@@ -257,7 +259,7 @@ export function PipelineBoard() {
                   <span>Responsável</span>
                   <AppSelect value={taskForm.assigneeId} onChange={(event) => setTaskForm({ ...taskForm, assigneeId: event.target.value })}>
                     <option value="">Sem responsável</option>
-                    {team.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
+                    {team.map((member) => <option key={member.id} value={member.id}>{member.name} · {member.type === "AI" ? "Agente IA" : "Funcionário"}</option>)}
                   </AppSelect>
                 </label>
                 <label className="field">
@@ -266,10 +268,10 @@ export function PipelineBoard() {
                 </label>
                 <label className="field workflow-field-wide">
                   <span>Detalhes</span>
-                  <input maxLength={500} value={taskForm.details} onChange={(event) => setTaskForm({ ...taskForm, details: event.target.value })} placeholder="Inclua contexto ou instruções para a pessoa" />
+                  <input maxLength={500} value={taskForm.details} onChange={(event) => setTaskForm({ ...taskForm, details: event.target.value })} placeholder="Inclua contexto ou instruções para o responsável" />
                 </label>
               </div>
-              {!team.length && <p className="workflow-form-help">Cadastre funcionários em <Link href="/equipe">Equipe e Agentes</Link> para atribuir tarefas a uma pessoa.</p>}
+              {!team.length && <p className="workflow-form-help">Cadastre funcionários ou agentes em <Link href="/equipe">Equipe e Agentes</Link> para atribuir tarefas.</p>}
               <div className="workflow-form-actions">
                 <button className="btn btn-ghost" type="button" onClick={() => setShowTaskForm(false)}>Cancelar</button>
                 <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? "Salvando..." : editingTaskId ? "Salvar alterações" : "Criar tarefa"}</button>
@@ -278,13 +280,13 @@ export function PipelineBoard() {
           )}
 
           <div className="workflow-board-toolbar">
-            <div><h2>Atividades da equipe</h2><p>Três etapas para acompanhar o andamento de cada pessoa.</p></div>
+            <div><h2>Atividades da equipe</h2><p>Três etapas para acompanhar o andamento de cada integrante.</p></div>
             <label className="workflow-filter">
               <Users size={15} aria-hidden="true" />
-              <span className="sr-only">Filtrar tarefas por pessoa</span>
+              <span className="sr-only">Filtrar tarefas por integrante</span>
               <AppSelect value={assigneeFilter} onChange={(event) => setAssigneeFilter(event.target.value)}>
                 <option value="all">Toda a equipe</option>
-                {team.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
+                {team.map((member) => <option key={member.id} value={member.id}>{member.name} · {member.type === "AI" ? "Agente IA" : "Funcionário"}</option>)}
               </AppSelect>
             </label>
           </div>
@@ -334,8 +336,8 @@ export function PipelineBoard() {
                           <div className="workflow-card-meta">
                             <span className={`workflow-due ${overdue ? "overdue" : ""}`}><CalendarDays size={13} />{formatDate(task.dueDate)}{overdue ? " · Atrasada" : ""}</span>
                             <span className="workflow-assignee">
-                              <span className="workflow-avatar">{owner ? initials(owner.name) : "—"}</span>
-                              {owner?.name ?? "Sem responsável"}
+                              <span className={`workflow-avatar ${owner?.type === "AI" ? "is-agent" : ""}`}>{owner?.type === "AI" ? <Bot size={13} /> : owner ? initials(owner.name) : "—"}</span>
+                              {owner?.name ?? "Sem responsável"}{owner?.type === "AI" ? " · Agente IA" : ""}
                             </span>
                           </div>
                           <label className="workflow-card-move">
@@ -393,7 +395,7 @@ export function PipelineBoard() {
                   <label className="field"><span>Empresa ou cliente</span><input maxLength={120} value={opportunityForm.company} onChange={(event) => setOpportunityForm({ ...opportunityForm, company: event.target.value })} placeholder="Nome da empresa" /></label>
                   <label className="field"><span>Pessoa de contato</span><input maxLength={120} value={opportunityForm.contact} onChange={(event) => setOpportunityForm({ ...opportunityForm, contact: event.target.value })} placeholder="Nome do contato" /></label>
                   <label className="field"><span>Valor estimado (R$)</span><input type="number" min="0" step="0.01" value={opportunityForm.amount} onChange={(event) => setOpportunityForm({ ...opportunityForm, amount: event.target.value })} placeholder="0,00" /></label>
-                  <label className="field"><span>Responsável</span><AppSelect value={opportunityForm.ownerId} onChange={(event) => setOpportunityForm({ ...opportunityForm, ownerId: event.target.value })}><option value="">Sem responsável</option>{team.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</AppSelect></label>
+                  <label className="field"><span>Responsável</span><AppSelect value={opportunityForm.ownerId} onChange={(event) => setOpportunityForm({ ...opportunityForm, ownerId: event.target.value })}><option value="">Sem responsável</option>{employees.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</AppSelect></label>
                   <label className="field"><span>Etapa</span><AppSelect required value={opportunityForm.stageId} onChange={(event) => setOpportunityForm({ ...opportunityForm, stageId: event.target.value })}>{stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}</AppSelect></label>
                   <label className="field"><span>Próxima ação</span><input maxLength={240} value={opportunityForm.nextStep} onChange={(event) => setOpportunityForm({ ...opportunityForm, nextStep: event.target.value })} placeholder="Ex.: Agendar uma conversa" /></label>
                   <label className="field"><span>Prazo da próxima ação</span><input type="date" value={opportunityForm.dueDate} onChange={(event) => setOpportunityForm({ ...opportunityForm, dueDate: event.target.value })} /></label>

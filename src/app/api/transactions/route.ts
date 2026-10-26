@@ -3,8 +3,12 @@ import {
   calculateFinancials,
   calculateCashFlow,
   calculateCashPosition,
+  calculateCashPositionForMonth,
   categoryBreakdown,
   dailyFinancialSeries,
+  availableDreMonths,
+  dreBreakdown,
+  filterByMonth,
   filterByPeriod,
   isPeriod,
   monthlySeries,
@@ -23,6 +27,12 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const requested = url.searchParams.get("period");
   const period: Period = isPeriod(requested) ? requested : "mes";
+  const currentMonth = new Date();
+  const currentDreMonth = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}`;
+  const requestedDreMonth = url.searchParams.get("dreMonth");
+  const dreMonth = requestedDreMonth && /^(\d{4})-(0[1-9]|1[0-2])$/.test(requestedDreMonth)
+    ? requestedDreMonth
+    : currentDreMonth;
   const category = url.searchParams.get("category");
   const kind = url.searchParams.get("kind");
 
@@ -30,7 +40,9 @@ export async function GET(request: Request) {
     const reference = new Date();
     const listed = filterByPeriod(db.transactions, period, reference, "ANY");
     const dreScoped = filterByPeriod(db.transactions, period, reference, "DRE");
+    const selectedDreScoped = filterByMonth(db.transactions, dreMonth, "DRE");
     const cashScoped = filterByPeriod(db.transactions, period, reference, "DFC");
+    const selectedDreCashScoped = filterByMonth(db.transactions, dreMonth, "DFC");
     const filtered = listed.filter(
       (transaction) =>
         (!category || category === "todas" || transaction.category === category) &&
@@ -41,9 +53,21 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       period,
+      dreMonth,
+      dreMonths: availableDreMonths(db.transactions, reference),
       transactions: [...filtered].sort((a, b) => b.date.localeCompare(a.date)),
       financials: current,
+      dreFinancials: calculateFinancials(selectedDreScoped),
       cashFlow: calculateCashFlow(cashScoped),
+      dreCashFlow: selectedDreCashScoped.some((transaction) => transaction.status === "CONFIRMED")
+        ? calculateCashFlow(selectedDreCashScoped)
+        : null,
+      dreCashPosition: calculateCashPositionForMonth(
+        db.transactions,
+        dreMonth,
+        db.company.cashOpeningBalance,
+        db.company.cashOpeningDate,
+      ),
       cashPosition: calculateCashPosition(
         db.transactions,
         period,
@@ -61,6 +85,7 @@ export async function GET(request: Request) {
       performanceSeries: dailyFinancialSeries(dreScoped),
       incomeByCategory: categoryBreakdown(dreScoped, "INCOME"),
       expensesByCategory: categoryBreakdown(dreScoped, "EXPENSE"),
+      dreBreakdown: dreBreakdown(selectedDreScoped),
       automated: listed.filter((transaction) => transaction.auto).length,
     });
   });
@@ -77,8 +102,9 @@ export async function POST(request: Request) {
       companyId: db.company.id,
       kind: body.kind,
       date: body.date ?? body.competenceDate ?? body.cashDate ?? new Date().toISOString().slice(0, 10),
-      competenceDate: body.competenceDate ?? body.date,
-      cashDate: body.cashDate ?? body.date,
+      ...(body.financialReport !== "DFC" ? { competenceDate: body.competenceDate ?? body.date } : {}),
+      ...(body.financialReport === "DFC" ? { cashDate: body.cashDate ?? body.date } : body.financialReport === "BOTH" && body.cashDate ? { cashDate: body.cashDate } : {}),
+      ...(body.financialReport === "DFC" || (body.financialReport === "BOTH" && body.cashDate) ? { cashDateConfirmed: true } : {}),
       financialReport: body.financialReport,
       costBehavior: body.kind === "EXPENSE" ? body.costBehavior : undefined,
       description: body.description,

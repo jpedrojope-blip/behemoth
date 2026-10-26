@@ -1,3 +1,5 @@
+import type { BrazilianStateCode } from "@/lib/locations";
+
 export type Role = "ADMIN" | "MANAGER" | "MEMBER";
 export type TransactionKind = "INCOME" | "EXPENSE";
 export type TransactionStatus = "CONFIRMED" | "PENDING";
@@ -21,7 +23,7 @@ export type Company = {
 export type Automations = {
   /** Replica lançamentos marcados como mensais nos meses seguintes. */
   recurringTransactions: boolean;
-  /** Lança o custo mensal da equipe como despesa do mês corrente. */
+  /** Gera uma estimativa pendente do custo da equipe para confirmação no financeiro. */
   teamCostToExpenses: boolean;
   /** Cria uma tarefa no calendário para cada item de ação com prazo. */
   actionItemsToCalendar: boolean;
@@ -46,17 +48,19 @@ export type Transaction = {
   importBatchId?: string;
   status: TransactionStatus;
   recurrence?: Recurrence;
-  /** Relatórios em que o lançamento entra. Ausente = ambos, para dados antigos. */
+  /** Relatórios em que o lançamento entra. Ausente = competência da DRE, sem presumir liquidação. */
   financialReport?: FinancialReport;
   /** Data de competência da DRE; ausente = date. */
   competenceDate?: string;
-  /** Data de caixa do fluxo de caixa; ausente = date. */
+  /** Data de liquidação do fluxo de caixa; ausência não significa que houve pagamento. */
   cashDate?: string;
+  /** Confirma que a data de caixa foi informada para um lançamento BOTH. */
+  cashDateConfirmed?: boolean;
   /** Classificação usada pelo cálculo da margem de contribuição. */
   costBehavior?: CostBehavior;
   /** Id do lançamento que originou esta cópia recorrente. */
   originId?: string;
-  /** Marca lançamentos criados por automação — não editáveis à mão. */
+  /** Marca lançamentos criados por automação. Estimativas de equipe permitem confirmação manual. */
   auto?: boolean;
 };
 
@@ -68,10 +72,21 @@ export type TeamMember = {
   phone: string;
   department: string;
   location: string;
+  locationState?: BrazilianStateCode | "";
+  locationCity?: string;
+  bio?: string;
+  startDate?: string;
+  manager?: string;
+  employmentType?: "CLT" | "PJ" | "INTERN" | "TEMPORARY" | "OTHER" | "";
+  skills?: string[];
   type: "HUMAN" | "AI";
   role: string;
-  /** Custo mensal informado para a conciliação automática de despesas. */
+  /** Custo mensal estimado informado para cada integrante. */
   monthlyCost: number;
+  agentProvider?: string;
+  agentModel?: string;
+  agentPurpose?: string;
+  agentIntegrations?: string[];
   status: "ACTIVE" | "REVIEW";
 };
 

@@ -16,6 +16,22 @@ export async function PATCH(request: Request, context: Context) {
   return withWorkspaceDatabase(request, (db) => {
     const transaction = db.transactions.find((item) => item.id === id);
     if (!transaction) return NextResponse.json({ error: "Lançamento não encontrado." }, { status: 404 });
+    if (transaction.auto && id.startsWith("auto_team_")) {
+      const keys = Object.keys(body);
+      if (keys.length !== 1 || keys[0] !== "status") {
+        return NextResponse.json(
+          { error: "Edite apenas a situação da estimativa. Para alterar o valor, atualize os custos dos integrantes da equipe." },
+          { status: 409 },
+        );
+      }
+      transaction.status = body.status ?? transaction.status;
+      if (transaction.status === "CONFIRMED") {
+        transaction.auto = false;
+        transaction.description = "Custo confirmado da equipe e agentes";
+      }
+      recordAudit(db, "UPDATE", "transaction", transaction.id);
+      return NextResponse.json({ transaction });
+    }
     if (transaction.auto) {
       return NextResponse.json(
         { error: "Este lançamento é gerado por automação. Edite a origem dele ou desligue a regra em Configurações." },
@@ -23,7 +39,21 @@ export async function PATCH(request: Request, context: Context) {
       );
     }
 
+    const nextReport = body.financialReport ?? transaction.financialReport ?? "DRE";
+    const explicitCashDate = body.cashDate ?? (transaction.cashDateConfirmed ? transaction.cashDate : undefined);
+    if (nextReport === "BOTH" && !explicitCashDate) {
+      return NextResponse.json({ error: "Informe a data de liquidação antes de incluir o lançamento no fluxo de caixa." }, { status: 400 });
+    }
     Object.assign(transaction, body);
+    if (nextReport === "DFC") {
+      transaction.cashDate = body.cashDate ?? body.date ?? transaction.cashDate ?? transaction.date;
+      transaction.cashDateConfirmed = true;
+    } else if (nextReport === "BOTH") {
+      transaction.cashDate = explicitCashDate;
+      transaction.cashDateConfirmed = true;
+    } else if (body.financialReport === "DRE") {
+      delete transaction.cashDateConfirmed;
+    }
     recordAudit(db, "UPDATE", "transaction", transaction.id);
     return NextResponse.json({ transaction });
   });

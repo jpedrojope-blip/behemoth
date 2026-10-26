@@ -9,20 +9,26 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const month = url.searchParams.get("month"); // formato YYYY-MM
+  const start = url.searchParams.get("start");
+  const end = url.searchParams.get("end");
+  const hasValidRange = Boolean(start && end && /^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end) && start <= end);
 
   return withWorkspaceDatabase(request, (db) => {
-    const events = month ? db.events.filter((event) => event.date.slice(0, 7) === month) : db.events;
+    const events = hasValidRange
+      ? db.events.filter((event) => event.date >= start! && event.date <= end!)
+      : month ? db.events.filter((event) => event.date.slice(0, 7) === month) : db.events;
+    const monthEvents = month ? db.events.filter((event) => event.date.slice(0, 7) === month) : events;
     const today = new Date().toISOString().slice(0, 10);
     return NextResponse.json({
       events: [...events].sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)),
       today,
       people: db.team.map((member) => member.name),
       summary: {
-        total: events.length,
-        pending: events.filter((event) => !event.done).length,
+        total: monthEvents.length,
+        pending: monthEvents.filter((event) => !event.done).length,
         today: db.events.filter((event) => event.date === today).length,
         late: db.events.filter((event) => !event.done && event.date < today).length,
-        automated: events.filter((event) => event.auto).length,
+        automated: monthEvents.filter((event) => event.auto).length,
       },
     });
   });
