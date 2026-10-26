@@ -8,7 +8,6 @@ import {
   BadgeDollarSign,
   Bot,
   CalendarDays,
-  ChevronDown,
   ChevronRight,
   FileText,
   Plus,
@@ -22,6 +21,7 @@ import {
 } from "lucide-react";
 import { BarChart } from "@/components/ui/bar-chart";
 import { FinancialPerformanceChart } from "@/components/ui/financial-performance-chart";
+import { MonthPicker } from "@/components/ui/month-picker";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, useResource } from "@/lib/client";
 import {
@@ -38,7 +38,11 @@ import type { CalendarEvent, Company, Insight, Transaction } from "@/lib/types";
 type Overview = {
   company: Company;
   period: Period;
+  chartMonth: string;
+  chartMonths: string[];
   financials: Financials;
+  chartFinancials: Financials;
+  chartComparison: { revenue: number };
   comparison: { revenue: number; costs: number; profit: number; previous: Financials };
   series: MonthlyPoint[];
   performanceSeries: FinancialTimelinePoint[];
@@ -92,10 +96,11 @@ function readDashboardWidgets(): Set<DashboardWidgetId> {
 
 export default function DashboardPage() {
   const [period, setPeriod] = useState<Period>("mes");
+  const [chartMonth, setChartMonth] = useState(currentMonthValue);
   const [visibleWidgets, setVisibleWidgets] = useState<Set<DashboardWidgetId>>(() => new Set(DEFAULT_DASHBOARD_WIDGETS));
   const [insightIndex, setInsightIndex] = useState(0);
   const [kpiDetail, setKpiDetail] = useState<{ title: string; body: string } | null>(null);
-  const { data, loading, error } = useResource<Overview>(`/api/overview?period=${period}`);
+  const { data, loading, error } = useResource<Overview>(`/api/overview?period=${period}&chartMonth=${chartMonth}`);
   const { data: session } = useResource<SessionProfile>("/api/auth/session");
   const notify = useToast();
 
@@ -288,19 +293,22 @@ export default function DashboardPage() {
             <div>
               <h2>Desempenho Financeiro</h2>
               <p className="subtitle" style={{ fontSize: 12.5, marginTop: 6 }}>
-                Total de ganhos no período
+                Total de ganhos no mês selecionado
               </p>
               <div className="big-number">
-                {brl(revenue)}
-                <span className="trend" style={{ color: (data?.comparison.revenue ?? 0) >= 0 ? undefined : "#ff8f7a" }}>
-                  {(data?.comparison.revenue ?? 0) >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                  {data ? signedPercent(data.comparison.revenue) : "—"}
+                {brl(data?.chartFinancials.grossRevenue ?? 0)}
+                <span className="trend" style={{ color: (data?.chartComparison.revenue ?? 0) >= 0 ? undefined : "#ff8f7a" }}>
+                  {(data?.chartComparison.revenue ?? 0) >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                  {data ? signedPercent(data.chartComparison.revenue) : "—"}
                 </span>
               </div>
             </div>
-            <Link className="select-small" href="/financeiro">
-              Mensal <ChevronDown size={14} />
-            </Link>
+            <MonthPicker
+              label="Mês do desempenho financeiro"
+              value={chartMonth}
+              months={data?.chartMonths ?? [chartMonth]}
+              onChange={setChartMonth}
+            />
           </div>
           {loading && !data ? (
             <p className="loading">Carregando dados...</p>
@@ -469,6 +477,11 @@ function greeting() {
   if (hour < 12) return "Bom dia";
   if (hour < 18) return "Boa tarde";
   return "Boa noite";
+}
+
+function currentMonthValue() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function Kpi({

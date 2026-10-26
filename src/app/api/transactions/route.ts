@@ -33,6 +33,10 @@ export async function GET(request: Request) {
   const dreMonth = requestedDreMonth && /^(\d{4})-(0[1-9]|1[0-2])$/.test(requestedDreMonth)
     ? requestedDreMonth
     : currentDreMonth;
+  const requestedChartMonth = url.searchParams.get("chartMonth");
+  const chartMonth = requestedChartMonth && /^(\d{4})-(0[1-9]|1[0-2])$/.test(requestedChartMonth)
+    ? requestedChartMonth
+    : currentDreMonth;
   const category = url.searchParams.get("category");
   const kind = url.searchParams.get("kind");
 
@@ -53,6 +57,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       period,
+      chartMonth,
+      chartMonths: availableDreMonths(db.transactions, reference),
       dreMonth,
       dreMonths: availableDreMonths(db.transactions, reference),
       transactions: [...filtered].sort((a, b) => b.date.localeCompare(a.date)),
@@ -82,7 +88,7 @@ export async function GET(request: Request) {
       },
       categories: [...new Set(db.transactions.map((transaction) => transaction.category))].sort(),
       series: monthlySeries(db.transactions, 8),
-      performanceSeries: dailyFinancialSeries(dreScoped),
+      performanceSeries: dailyFinancialSeries(filterByMonth(db.transactions, chartMonth, "DRE")),
       incomeByCategory: categoryBreakdown(dreScoped, "INCOME"),
       expensesByCategory: categoryBreakdown(dreScoped, "EXPENSE"),
       dreBreakdown: dreBreakdown(selectedDreScoped),

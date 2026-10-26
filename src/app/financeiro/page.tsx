@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { Donut } from "@/components/ui/donut";
 import { FinancialPerformanceChart } from "@/components/ui/financial-performance-chart";
+import { MonthPicker } from "@/components/ui/month-picker";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, useAutoRevalidate, useResource } from "@/lib/client";
 import {
@@ -40,6 +41,8 @@ import type { Transaction } from "@/lib/types";
 
 type Payload = {
   period: Period;
+  chartMonth: string;
+  chartMonths: string[];
   transactions: Transaction[];
   financials: Financials;
   cashFlow: CashFlowFinancials;
@@ -281,6 +284,7 @@ function selectDreStageWithKeyboard(event: KeyboardEvent<SVGGElement>, stageId: 
 
 export default function FinanceiroPage() {
   const [period, setPeriod] = useState<Period>("mes");
+  const [chartMonth, setChartMonth] = useState(currentMonthValue);
   const [dreMonth, setDreMonth] = useState(currentMonthValue);
   const [selectedDreStep, setSelectedDreStep] = useState<DreStageId>("net-profit");
   const [visibleSections, setVisibleSections] = useState<Set<FinanceSectionId>>(() => new Set(DEFAULT_FINANCE_SECTIONS));
@@ -330,7 +334,7 @@ export default function FinanceiroPage() {
   }
 
   const { data, loading, error } = useResource<Payload>(
-    `/api/transactions?period=${period}&dreMonth=${dreMonth}&kind=${kind}&category=${encodeURIComponent(category)}`,
+    `/api/transactions?period=${period}&chartMonth=${chartMonth}&dreMonth=${dreMonth}&kind=${kind}&category=${encodeURIComponent(category)}`,
   );
   useAutoRevalidate();
 
@@ -910,9 +914,15 @@ export default function FinanceiroPage() {
         <div className="card">
           <div className="card-head">
             <div>
-              <p className="card-kicker">RESULTADO DO PERÍODO</p>
+              <p className="card-kicker">RESULTADO DO MÊS</p>
               <h2>Receita, custos e lucro</h2>
             </div>
+            <MonthPicker
+              label="Mês do gráfico financeiro"
+              value={chartMonth}
+              months={data?.chartMonths ?? [chartMonth]}
+              onChange={setChartMonth}
+            />
           </div>
           {loading && !data ? (
             <p className="loading">Carregando...</p>

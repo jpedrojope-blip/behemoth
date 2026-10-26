@@ -7588,6 +7588,16 @@ textarea:focus {
   box-shadow: none;
 }
 
+.month-picker {
+  flex-shrink: 0;
+  gap: 6px;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+
+.month-picker > .app-select { width: 144px; }
+.month-picker .app-select-trigger { min-height: 32px; padding: 4px 3px; }
+
 .calendar-control > .app-select { width: 132px; }
 .calendar-month-select > .app-select { width: 110px; }
 

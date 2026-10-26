@@ -4,6 +4,8 @@ import {
   calculateFinancials,
   categoryBreakdown,
   dailyFinancialSeries,
+  availableDreMonths,
+  filterByMonth,
   filterByPeriod,
   isPeriod,
   monthlySeries,
@@ -20,16 +22,32 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const requested = url.searchParams.get("period");
   const period: Period = isPeriod(requested) ? requested : "mes";
+  const currentMonth = new Date();
+  const currentMonthValue = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}`;
+  const requestedChartMonth = url.searchParams.get("chartMonth");
+  const chartMonth = requestedChartMonth && /^(\d{4})-(0[1-9]|1[0-2])$/.test(requestedChartMonth)
+    ? requestedChartMonth
+    : currentMonthValue;
   return withWorkspaceDatabase(request, (db) => {
   const scoped = filterByPeriod(db.transactions, period);
   const current = calculateFinancials(scoped);
   const previous = calculateFinancials(previousPeriod(db.transactions, period));
+  const chartMonthScoped = filterByMonth(db.transactions, chartMonth);
+  const chartFinancials = calculateFinancials(chartMonthScoped);
+  const [chartYear, chartMonthNumber] = chartMonth.split("-").map(Number);
+  const previousChartDate = new Date(chartYear, chartMonthNumber - 2, 1);
+  const previousChartMonth = `${previousChartDate.getFullYear()}-${String(previousChartDate.getMonth() + 1).padStart(2, "0")}`;
+  const previousChartFinancials = calculateFinancials(filterByMonth(db.transactions, previousChartMonth));
   const today = new Date().toISOString().slice(0, 10);
 
   return NextResponse.json({
     company: db.company,
     period,
+    chartMonth,
+    chartMonths: availableDreMonths(db.transactions),
     financials: current,
+    chartFinancials,
+    chartComparison: { revenue: percentChange(chartFinancials.grossRevenue, previousChartFinancials.grossRevenue) },
     comparison: {
       revenue: percentChange(current.grossRevenue, previous.grossRevenue),
       costs: percentChange(current.costs, previous.costs),
@@ -37,7 +55,7 @@ export async function GET(request: Request) {
       previous,
     },
     series: monthlySeries(db.transactions, 8),
-    performanceSeries: dailyFinancialSeries(scoped),
+    performanceSeries: dailyFinancialSeries(chartMonthScoped),
     weekday: weekdayBreakdown(db.transactions, period),
     expensesByCategory: categoryBreakdown(scoped, "EXPENSE"),
     insights: buildInsights(db.transactions, period),
