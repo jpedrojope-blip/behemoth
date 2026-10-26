@@ -65,9 +65,15 @@ export const teamCreateSchema = z.object({
 
 export const teamUpdateSchema = teamCreateSchema.partial();
 
+const meetingUrlSchema = z.string().trim().url("Informe um link válido.").refine(
+  (value) => /^https?:\/\//i.test(value),
+  "Use um link que comece com http:// ou https://.",
+);
+
 export const meetingCreateSchema = z.object({
   title: z.string().trim().min(1, "Informe o título da reunião."),
   date: z.string().min(1).optional(),
+  meetingUrl: z.union([meetingUrlSchema, z.literal("")]).default(""),
   participants: z.array(z.string()).default([]),
   notes: z.string().default(""),
   transcript: z.string().default(""),
@@ -84,6 +90,7 @@ export const actionItemSchema = z.object({
 export const meetingUpdateSchema = z.object({
   title: z.string().trim().min(1).optional(),
   date: z.string().min(1).optional(),
+  meetingUrl: z.union([meetingUrlSchema, z.literal("")]).optional(),
   participants: z.array(z.string()).optional(),
   notes: z.string().optional(),
   transcript: z.string().optional(),

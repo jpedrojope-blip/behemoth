@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       companyId: db.company.id,
       title: body.title,
       date: body.date ?? new Date().toISOString(),
+      ...(body.meetingUrl ? { meetingUrl: body.meetingUrl } : {}),
       participants: body.participants,
       notes: body.notes,
       transcript: body.transcript,

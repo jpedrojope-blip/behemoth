@@ -160,6 +160,7 @@ export type Meeting = {
   companyId: string;
   title: string;
   date: string;
+  meetingUrl?: string;
   participants: string[];
   notes: string;
   transcript: string;
