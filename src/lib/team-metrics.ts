@@ -44,6 +44,7 @@ export function teamMemberProfile(db: Database, member: TeamMember): TeamMemberP
     bio: member.bio ?? "",
     startDate: member.startDate ?? "",
     manager: member.manager ?? "",
+    avatarDataUrl: member.avatarDataUrl ?? "",
     employmentType: member.employmentType ?? "",
     skills: member.skills ?? [],
     type: member.type,

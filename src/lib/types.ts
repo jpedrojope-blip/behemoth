@@ -77,6 +77,7 @@ export type TeamMember = {
   bio?: string;
   startDate?: string;
   manager?: string;
+  avatarDataUrl?: string;
   employmentType?: "CLT" | "PJ" | "INTERN" | "TEMPORARY" | "OTHER" | "";
   skills?: string[];
   type: "HUMAN" | "AI";

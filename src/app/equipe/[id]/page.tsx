@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ChangeEvent } from "react";
 import { AppSelect } from "@/components/ui/app-select";
+import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, Bot, CalendarDays, Check, CirclePlus, ListTodo, MapPin, Save, UserRound } from "lucide-react";
@@ -33,6 +34,7 @@ type EditForm = {
   agentPurpose: string;
   agentIntegrations: string;
   status: TeamMember["status"];
+  avatarDataUrl: string;
 };
 
 type WorkflowPayload = { tasks: TeamTask[] };
@@ -45,6 +47,7 @@ export default function TeamMemberPage() {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<EditForm | null>(null);
   const [saving, setSaving] = useState(false);
+  const [avatarProcessing, setAvatarProcessing] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "tasks">("overview");
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("ALL");
   const [taskFormOpen, setTaskFormOpen] = useState(false);
@@ -79,6 +82,7 @@ export default function TeamMemberPage() {
       agentPurpose: member.agentPurpose ?? "",
       agentIntegrations: (member.agentIntegrations ?? []).join(", "),
       status: member.status,
+      avatarDataUrl: member.avatarDataUrl ?? "",
     });
     setEditing(true);
   }
@@ -109,6 +113,25 @@ export default function TeamMemberPage() {
 
   function updateForm<Key extends keyof EditForm>(key: Key, value: EditForm[Key]) {
     setForm((current) => (current ? { ...current, [key]: value } : current));
+  }
+
+  async function chooseAvatar(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file || !form) return;
+    if (!file.type.startsWith("image/")) {
+      notify("Selecione um arquivo de imagem.", "error");
+      return;
+    }
+
+    setAvatarProcessing(true);
+    try {
+      updateForm("avatarDataUrl", await optimizeAvatar(file));
+    } catch (cause) {
+      notify(cause instanceof Error ? cause.message : "Não foi possível abrir esta imagem.", "error");
+    } finally {
+      setAvatarProcessing(false);
+    }
   }
 
   const memberTasks = (workflow?.tasks ?? [])
@@ -182,8 +205,8 @@ export default function TeamMemberPage() {
       <header className={`team-profile-hero card ${isAgent ? "is-agent" : "is-human"}`}>
         <div className="team-profile-hero-kicker"><span className="card-kicker">{isAgent ? "PERFIL DO AGENTE" : "PERFIL DO FUNCIONÁRIO"}</span><span className={`pill ${member.status === "ACTIVE" ? "green" : "amber"}`}>{member.status === "ACTIVE" ? "Ativo" : "Em revisão"}</span></div>
         <div className="team-profile-heading">
-          <div className={`member-avatar team-profile-avatar ${isAgent ? "ai" : ""}`}>
-            {isAgent ? <Bot size={25} /> : initials(member.name)}
+          <div className={`member-avatar team-profile-avatar ${isAgent ? "ai" : ""} ${member.avatarDataUrl ? "has-photo" : ""}`}>
+            {member.avatarDataUrl ? <Image src={member.avatarDataUrl} alt={`Foto de ${member.name}`} width={70} height={70} unoptimized /> : isAgent ? <Bot size={25} /> : initials(member.name)}
           </div>
           <div className="team-profile-title">
             <span className={`pill ${isAgent ? "purple" : "blue"}`}>{isAgent ? "Agente de IA" : "Funcionário"}</span>
@@ -224,9 +247,20 @@ export default function TeamMemberPage() {
             </div>
             <div className="team-profile-form-actions">
               <button className="btn btn-ghost" type="button" onClick={() => { setEditing(false); setForm(null); }}>Cancelar</button>
-              <button className="btn btn-primary" type="submit" disabled={saving}>
-                <Save size={15} /> {saving ? "Salvando..." : "Salvar alterações"}
+              <button className="btn btn-primary" type="submit" disabled={saving || avatarProcessing}>
+                <Save size={15} /> {saving ? "Salvando..." : avatarProcessing ? "Preparando foto..." : "Salvar alterações"}
               </button>
+            </div>
+          </div>
+          <div className="team-profile-photo-editor">
+            <div className={`member-avatar team-profile-photo-preview ${form.type === "AI" ? "ai" : ""} ${form.avatarDataUrl ? "has-photo" : ""}`}>
+              {form.avatarDataUrl ? <Image src={form.avatarDataUrl} alt={`Prévia da foto de ${form.name || "perfil"}`} width={72} height={72} unoptimized /> : form.type === "AI" ? <Bot size={24} /> : initials(form.name || "Perfil")}
+            </div>
+            <div className="team-profile-photo-copy">
+              <label htmlFor="profile-avatar">Foto do perfil</label>
+              <input id="profile-avatar" type="file" accept="image/*" onChange={(event) => void chooseAvatar(event)} disabled={avatarProcessing} />
+              <span className="small muted">A imagem é ajustada para caber no perfil. Salve as alterações para confirmar.</span>
+              {form.avatarDataUrl && <button className="team-profile-photo-remove" type="button" onClick={() => updateForm("avatarDataUrl", "")}>Remover foto</button>}
             </div>
           </div>
           <div className="form-grid team-profile-form-grid">
@@ -489,4 +523,24 @@ function taskStatusLabel(status: TeamTaskStatus) {
 function localDateKey() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+async function optimizeAvatar(file: File) {
+  const bitmap = await createImageBitmap(file);
+  try {
+    for (const maxDimension of [480, 360, 280]) {
+      const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Não foi possível preparar a foto.");
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const avatarDataUrl = canvas.toDataURL("image/jpeg", 0.78);
+      if (avatarDataUrl.length <= 560_000) return avatarDataUrl;
+    }
+  } finally {
+    bitmap.close();
+  }
+  throw new Error("Esta imagem ainda ficou grande demais. Escolha uma foto menor.");
 }

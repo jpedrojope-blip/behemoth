@@ -51,6 +51,10 @@ export const teamCreateSchema = z.object({
   locationState: z.enum(BRAZILIAN_STATE_CODES).or(z.literal("")).default(""),
   locationCity: z.string().trim().max(80).default(""),
   bio: z.string().trim().max(320).default(""),
+  avatarDataUrl: z.string().max(600_000).refine(
+    (value) => !value || /^data:image\/jpeg;base64,/i.test(value),
+    "A foto precisa estar em formato de imagem válido.",
+  ).default(""),
   startDate: z.union([isoDate, z.literal("")]).default(""),
   manager: z.string().trim().max(100).default(""),
   employmentType: z.enum(["CLT", "PJ", "INTERN", "TEMPORARY", "OTHER", ""]).default(""),

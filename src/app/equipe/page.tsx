@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AppSelect } from "@/components/ui/app-select";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Bot,
   CalendarDays,
@@ -503,8 +504,8 @@ export default function EquipePage() {
             return (
               <article className={`member-card ${member.type === "AI" ? "is-agent" : "is-human"}`} key={member.id}>
                 <div className="member-top">
-                  <div className={`member-avatar ${member.type === "AI" ? "ai" : ""}`}>
-                    {member.type === "AI" ? <Bot size={21} /> : initials(member.name)}
+                  <div className={`member-avatar ${member.type === "AI" ? "ai" : ""} ${member.avatarDataUrl ? "has-photo" : ""}`}>
+                    {member.avatarDataUrl ? <Image src={member.avatarDataUrl} alt={`Foto de ${member.name}`} width={54} height={54} unoptimized /> : member.type === "AI" ? <Bot size={21} /> : initials(member.name)}
                   </div>
                   <div className="member-info">
                     <span className={`pill ${member.type === "AI" ? "purple" : "blue"}`}>{member.type === "AI" ? "Agente IA" : "Funcionário"}</span>
