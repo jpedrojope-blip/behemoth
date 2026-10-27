@@ -17,10 +17,12 @@ import type { FinancialTimelinePoint } from "@/lib/finance";
 type Props = {
   points: FinancialTimelinePoint[];
   height?: number;
+  onPointClick?: (date: string, metric: "revenue" | "costs" | "result") => void;
 };
 
 type TrendDatum = {
   date: string;
+  label: string;
   revenue: number;
   costs: number;
   result: number;
@@ -63,11 +65,12 @@ function FinancialTooltip({
 }
 
 /** Curva diária no estilo da referência, com uma métrica por vez. */
-export function LineCharts9({ points, height = 250 }: Props) {
+export function LineCharts9({ points, height = 250, onPointClick }: Props) {
   const [selectedKey, setSelectedKey] = useState<MetricKey>("revenue");
   const metric = METRICS.find((item) => item.key === selectedKey) ?? METRICS[0];
   const data: TrendDatum[] = points.map((point) => ({
-    date: point.label,
+    date: point.date,
+    label: point.label,
     revenue: point.income,
     costs: point.expense,
     result: point.profit,
@@ -102,7 +105,15 @@ export function LineCharts9({ points, height = 250 }: Props) {
         <span>Variação <b className={change !== null && change < 0 ? "negative" : "positive"}>{change === null ? "—" : `${change >= 0 ? "+" : "−"}${Math.abs(change).toFixed(1).replace(".", ",")}%`}</b></span>
       </div>
       <ResponsiveContainer width="100%" height={height}>
-        <LineChart data={data} margin={{ top: 18, right: 10, left: 2, bottom: 6 }}>
+        <LineChart
+          data={data}
+          margin={{ top: 18, right: 10, left: 2, bottom: 6 }}
+          onClick={(state) => {
+            const index = state?.activeTooltipIndex;
+            const point = typeof index === "number" ? data[index] : undefined;
+            if (point) onPointClick?.(point.date, selectedKey);
+          }}
+        >
           <defs>
             <linearGradient id="financial-selected-area" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={metric.color} stopOpacity={0.2} />
@@ -115,7 +126,7 @@ export function LineCharts9({ points, height = 250 }: Props) {
 
           <CartesianGrid vertical={false} stroke="#9eb1cc" strokeDasharray="4 8" strokeOpacity={0.48} />
           <XAxis
-            dataKey="date"
+            dataKey="label"
             axisLine={false}
             tickLine={false}
             interval={tickInterval}

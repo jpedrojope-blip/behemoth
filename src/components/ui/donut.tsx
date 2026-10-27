@@ -11,12 +11,13 @@ type Props = {
   centerLabel?: string;
   size?: number;
   formatValue?: (value: number) => string;
+  onSliceClick?: (label: string) => void;
 };
 
 const THICKNESS = 26;
 const TAU = Math.PI * 2;
 
-export function Donut({ slices, centerValue, centerLabel = "Total", size = 190, formatValue }: Props) {
+export function Donut({ slices, centerValue, centerLabel = "Total", size = 190, formatValue, onSliceClick }: Props) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const total = slices.reduce((sum, slice) => sum + slice.value, 0);
   const activeSlice = activeIndex === null ? null : slices[activeIndex];
@@ -60,10 +61,19 @@ export function Donut({ slices, centerValue, centerLabel = "Total", size = 190, 
     <div className={`donut-wrap ${activeSlice ? "is-slice-active" : ""}`} onMouseLeave={() => setActiveIndex(null)}>
       <div
         className="donut-visual"
-        role="img"
+        role={onSliceClick ? "button" : "img"}
+        tabIndex={onSliceClick ? 0 : undefined}
         aria-label={`Composição por categoria. ${slices.map((slice) => `${slice.label}: ${formatValue ? formatValue(slice.value) : slice.value}`).join(", ")}`}
         style={{ width: size, height: size }}
         onPointerMove={handlePointerMove}
+        onClick={() => activeSlice && onSliceClick?.(activeSlice.label)}
+        onKeyDown={(event) => {
+          if ((event.key === "Enter" || event.key === " ") && activeSlice) {
+            event.preventDefault();
+            onSliceClick?.(activeSlice.label);
+          }
+        }}
+        title={onSliceClick && activeSlice ? `Abrir lançamentos: ${activeSlice.label}` : undefined}
       >
         <div
           className="donut-ring"
@@ -94,7 +104,10 @@ export function Donut({ slices, centerValue, centerLabel = "Total", size = 190, 
             aria-pressed={activeIndex === index}
             onMouseEnter={() => setActiveIndex(index)}
             onFocus={() => setActiveIndex(index)}
-            onClick={() => setActiveIndex((current) => current === index ? null : index)}
+            onClick={() => {
+              setActiveIndex((current) => current === index ? null : index);
+              onSliceClick?.(slice.label);
+            }}
           >
             <i style={{ background: slice.color }} />
             {slice.label}

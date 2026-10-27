@@ -39,6 +39,8 @@ export type Transaction = {
   kind: TransactionKind;
   date: string;
   description: string;
+  /** Cliente, fornecedor ou pessoa favorecida pelo lançamento, quando informado. */
+  counterparty?: string;
   category: string;
   /** Código contábil de origem; permite agrupar contas sem depender do texto da categoria. */
   accountCode?: string;

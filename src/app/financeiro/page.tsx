@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useRouter } from "next/navigation";
 import { AppSelect } from "@/components/ui/app-select";
 import {
   BadgeDollarSign,
+  ArrowRight,
   CalendarDays,
   Check,
+  ChevronDown,
   Coins,
   FileSpreadsheet,
   FileText,
@@ -26,6 +29,7 @@ import { useToast } from "@/components/ui/toast";
 import { apiFetch, useAutoRevalidate, useResource } from "@/lib/client";
 import {
   PERIOD_LABELS,
+  isPeriod,
   type CashPosition,
   type CashFlowFinancials,
   type CategoryTotal,
@@ -55,6 +59,7 @@ type Payload = {
   performanceSeries: FinancialTimelinePoint[];
   incomeByCategory: CategoryTotal[];
   expensesByCategory: CategoryTotal[];
+  cashExpensesByCategory: CategoryTotal[];
   dreMonth: string;
   dreMonths: string[];
   dreFinancials: Financials;
@@ -108,6 +113,7 @@ function readFinanceSections(): Set<FinanceSectionId> {
 
 const EMPTY_FORM = {
   description: "",
+  counterparty: "",
   amount: "",
   kind: "INCOME" as Transaction["kind"],
   category: "",
@@ -129,6 +135,17 @@ function expenseCategoryColor(category: string, index: number) {
   if (/marketing|comissao|frete|vendas?/.test(normalized)) return "#f97316";
   if (/aluguel|energia|internet|administrativ/.test(normalized)) return "#2997f5";
   return EXPENSE_PALETTE[index % EXPENSE_PALETTE.length];
+}
+
+function expenseCategoryLabel(category: string) {
+  const normalized = category.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  if (normalized === "cmv") return "CMV";
+  if (normalized === "rh") return "RH";
+  if (normalized === "administrativa" || normalized === "administrativo") return "Administrativa";
+  if (/^(imposto|impostos|tributos?)$/.test(normalized)) return "Impostos";
+  if (normalized === "vendas" || normalized === "venda") return "Vendas";
+  if (normalized === "outros" || normalized === "outras") return "Outros";
+  return category.charAt(0).toLocaleUpperCase("pt-BR") + category.slice(1).toLocaleLowerCase("pt-BR");
 }
 
 function signedBrl(value: number) {
@@ -283,11 +300,16 @@ function selectDreStageWithKeyboard(event: KeyboardEvent<SVGGElement>, stageId: 
 }
 
 export default function FinanceiroPage() {
+  const router = useRouter();
   const [period, setPeriod] = useState<Period>("mes");
   const [chartMonth, setChartMonth] = useState(currentMonthValue);
   const [dreMonth, setDreMonth] = useState(currentMonthValue);
   const [selectedDreStep, setSelectedDreStep] = useState<DreStageId>("net-profit");
   const [visibleSections, setVisibleSections] = useState<Set<FinanceSectionId>>(() => new Set(DEFAULT_FINANCE_SECTIONS));
+  const [expenseDetailsOpen, setExpenseDetailsOpen] = useState(false);
+  const [cashExpenseDetailsOpen, setCashExpenseDetailsOpen] = useState(false);
+  const [dreItemsExpanded, setDreItemsExpanded] = useState(false);
+  const [transactionsExpanded, setTransactionsExpanded] = useState(false);
   const [kind, setKind] = useState("todos");
   const [category, setCategory] = useState("todas");
   const [formOpen, setFormOpen] = useState(false);
@@ -338,9 +360,30 @@ export default function FinanceiroPage() {
   );
   useAutoRevalidate();
 
+  function openFinancialDetails(details: Record<string, string>) {
+    const months = data?.dreMonths.length ? data.dreMonths : data?.chartMonths ?? [chartMonth];
+    const params = new URLSearchParams({ period, chartMonth, dreMonth, months: months.join(","), ...details });
+    router.push(`/financeiro/detalhes?${params.toString()}`);
+  }
+
   useEffect(() => {
     if (new URLSearchParams(window.location.search).has("novo")) setFormOpen(true);
+    const params = new URLSearchParams(window.location.search);
+    const requestedPeriod = params.get("period");
+    const requestedChartMonth = params.get("chartMonth");
+    const requestedDreMonth = params.get("dreMonth");
+    if (isPeriod(requestedPeriod)) setPeriod(requestedPeriod);
+    if (requestedChartMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedChartMonth)) setChartMonth(requestedChartMonth);
+    if (requestedDreMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedDreMonth)) setDreMonth(requestedDreMonth);
   }, []);
+
+  useEffect(() => {
+    setTransactionsExpanded(false);
+  }, [period, kind, category]);
+
+  useEffect(() => {
+    setDreItemsExpanded(false);
+  }, [selectedDreStep, dreMonth]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -348,7 +391,7 @@ export default function FinanceiroPage() {
     try {
       await apiFetch("/api/transactions", {
         method: "POST",
-        body: JSON.stringify({ ...form, cashDate: form.cashDate || undefined }),
+        body: JSON.stringify({ ...form, counterparty: form.counterparty.trim() || undefined, cashDate: form.cashDate || undefined }),
       });
       notify("Lançamento salvo.", "success");
       setForm({ ...EMPTY_FORM, kind: form.kind });
@@ -498,6 +541,27 @@ export default function FinanceiroPage() {
   const cashFlow = data?.cashFlow;
   const dreCashFlow = data?.dreCashFlow;
   const dreCashPosition = data?.dreCashPosition;
+  const expenseCategories = data?.expensesByCategory ?? [];
+  const existingOtherCategories = expenseCategories.filter((entry) => /^(outros?|outras?)$/i.test(entry.category.trim()));
+  const rankedExpenseCategories = expenseCategories.filter((entry) => !existingOtherCategories.includes(entry));
+  const topExpenseCategories = rankedExpenseCategories.slice(0, 5);
+  const otherExpenseCategories = [...existingOtherCategories, ...rankedExpenseCategories.slice(5)];
+  const totalExpenseAmount = expenseCategories.reduce((total, entry) => total + entry.amount, 0);
+  const summarizedExpenseCategories: CategoryTotal[] = [
+    ...topExpenseCategories,
+    ...(otherExpenseCategories.length
+      ? [{
+          category: "Outros",
+          amount: otherExpenseCategories.reduce((total, entry) => total + entry.amount, 0),
+          share: totalExpenseAmount
+            ? otherExpenseCategories.reduce((total, entry) => total + entry.amount, 0) / totalExpenseAmount
+            : 0,
+        }]
+      : []),
+  ];
+  const cashExpenseCategories = data?.cashExpensesByCategory ?? [];
+  const allTransactions = data?.transactions ?? [];
+  const visibleTransactions = transactionsExpanded ? allTransactions : allTransactions.slice(0, 5);
   const revenue = financials?.grossRevenue ?? 0;
   const costs = financials?.costs ?? 0;
   const margin = (financials?.netMargin ?? 0) * 100;
@@ -883,6 +947,7 @@ export default function FinanceiroPage() {
           value={brl(revenue)}
           delta={data ? signedPercent(data.comparison.revenue) : "—"}
           positive={(data?.comparison.revenue ?? 0) >= 0}
+          onClick={() => openFinancialDetails({ type: "metric", metric: "revenue", report: "DRE" })}
         />
         <FinanceCard
           icon={<Receipt size={22} />}
@@ -891,6 +956,7 @@ export default function FinanceiroPage() {
           value={brl(costs)}
           delta={data ? signedPercent(data.comparison.costs) : "—"}
           positive={(data?.comparison.costs ?? 0) <= 0}
+          onClick={() => openFinancialDetails({ type: "metric", metric: "costs", report: "DRE" })}
         />
         <FinanceCard
           icon={<TrendingUp size={22} />}
@@ -899,6 +965,7 @@ export default function FinanceiroPage() {
           value={brl(financials?.netProfit ?? 0)}
           delta={data ? signedPercent(data.comparison.profit) : "—"}
           positive={(financials?.netProfit ?? 0) >= 0}
+          onClick={() => openFinancialDetails({ type: "metric", metric: "profit", report: "DRE" })}
         />
         <FinanceCard
           icon={<Coins size={22} />}
@@ -907,27 +974,41 @@ export default function FinanceiroPage() {
           value={percent(margin)}
           delta={`${financials?.transactionCount ?? 0} lançamentos`}
           positive={margin >= 0}
+          onClick={() => openFinancialDetails({ type: "metric", metric: "margin", report: "DRE" })}
         />
       </section>
 
       <section className="section split" hidden={!visibleSections.has("charts")}>
-        <div className="card">
+        <div className="card financial-performance-card">
           <div className="card-head">
             <div>
               <p className="card-kicker">RESULTADO DO MÊS</p>
-              <h2>Receita, custos e lucro</h2>
+              <h2>Relatório financeiro</h2>
             </div>
-            <MonthPicker
-              label="Mês do gráfico financeiro"
-              value={chartMonth}
-              months={data?.chartMonths ?? [chartMonth]}
-              onChange={setChartMonth}
-            />
+            <div className="financial-chart-head-actions">
+              <button
+                className="financial-chart-details-button"
+                type="button"
+                onClick={() => openFinancialDetails({ type: "report", report: "DRE", detailReport: "DRE", detailMonth: chartMonth })}
+              >
+                Ver detalhadamente <ArrowRight size={14} aria-hidden="true" />
+              </button>
+              <MonthPicker
+                label="Mês do gráfico financeiro"
+                value={chartMonth}
+                months={data?.chartMonths ?? [chartMonth]}
+                onChange={setChartMonth}
+              />
+            </div>
           </div>
           {loading && !data ? (
             <p className="loading">Carregando...</p>
           ) : (
-            <FinancialPerformanceChart points={data?.performanceSeries ?? []} height={250} />
+            <FinancialPerformanceChart
+              points={data?.performanceSeries ?? []}
+              height={250}
+              onPointClick={(date, metric) => openFinancialDetails({ type: "chart-point", date, month: date.slice(0, 7), metric, report: "DRE", detailReport: "DRE", detailMonth: date.slice(0, 7) })}
+            />
           )}
         </div>
 
@@ -937,19 +1018,51 @@ export default function FinanceiroPage() {
               <p className="card-kicker">COMPOSIÇÃO DOS CUSTOS</p>
               <h2>Para onde vai o dinheiro</h2>
             </div>
+            {expenseCategories.length > 0 && (
+              <button
+                className={`expense-details-toggle ${expenseDetailsOpen ? "is-open" : ""}`}
+                type="button"
+                aria-expanded={expenseDetailsOpen}
+                onClick={() => setExpenseDetailsOpen((open) => !open)}
+              >
+                {expenseDetailsOpen ? "Fechar" : "Ver categorias"}
+                <ChevronDown size={14} aria-hidden="true" />
+              </button>
+            )}
           </div>
-          {data?.expensesByCategory.length ? (
-            <Donut
-              slices={data.expensesByCategory.map((entry, index) => ({
-                label: entry.category,
-                value: entry.amount,
-                color: expenseCategoryColor(entry.category, index),
-              }))}
-              centerValue={brl(costs)}
-              centerLabel="Total"
-              size={178}
-              formatValue={brl}
-            />
+          {summarizedExpenseCategories.length ? (
+            <>
+              <Donut
+                slices={summarizedExpenseCategories.map((entry, index) => ({
+                  label: expenseCategoryLabel(entry.category),
+                  value: entry.amount,
+                  color: expenseCategoryColor(entry.category, index),
+                }))}
+                centerValue={brl(costs)}
+                centerLabel="Total"
+                size={178}
+                formatValue={brl}
+                onSliceClick={(label) => {
+                  const category = label === "Outros"
+                    ? "__outros__"
+                    : summarizedExpenseCategories.find((entry) => expenseCategoryLabel(entry.category) === label)?.category;
+                  if (category) openFinancialDetails({ type: "expense-category", category, report: "DRE", detailReport: "DRE" });
+                }}
+              />
+              {otherExpenseCategories.length > 0 && <p className="expense-breakdown-note">Cinco maiores categorias e o restante agrupado em Outros.</p>}
+              {expenseDetailsOpen && (
+                <ul className="expense-category-details" aria-label="Detalhamento de todas as categorias de despesa">
+                  {expenseCategories.map((entry, index) => (
+                    <li key={entry.category}>
+                      <i style={{ background: expenseCategoryColor(entry.category, index) }} aria-hidden="true" />
+                      <span>{expenseCategoryLabel(entry.category)}</span>
+                      <b>{brl(entry.amount)}</b>
+                      <em>{percent(entry.share * 100)}</em>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           ) : (
             <p className="empty" style={{ marginTop: 18 }}>
               Sem custos registrados no período.
@@ -976,12 +1089,6 @@ export default function FinanceiroPage() {
                   <option key={month} value={month}>{formatDreMonth(month)}</option>
                 ))}
               </AppSelect>
-              <div className="dre-cash-balance">
-                <span>Saldo restante</span>
-                <strong className={dreCashPosition ? (dreCashPosition.closingBalance < 0 ? "is-negative" : "is-positive") : "is-unavailable"}>
-                  {dreCashPosition ? brlExact(dreCashPosition.closingBalance) : "Não configurado"}
-                </strong>
-              </div>
             </div>
           </div>
           {loading && !data ? (
@@ -1021,8 +1128,14 @@ export default function FinanceiroPage() {
                       tabIndex={0}
                       aria-pressed={selectedDreStep === stage.id}
                       aria-label={`Selecionar ${stage.label}: ${brlExact(stage.value)}; ${share} da receita bruta`}
-                      onClick={() => setSelectedDreStep(stage.id)}
-                      onKeyDown={(event) => selectDreStageWithKeyboard(event, stage.id, setSelectedDreStep)}
+                      onClick={() => {
+                        setSelectedDreStep(stage.id);
+                        openFinancialDetails({ type: "dre-stage", stage: stage.id, month: dreMonth, detailReport: "DRE", detailMonth: dreMonth });
+                      }}
+                      onKeyDown={(event) => selectDreStageWithKeyboard(event, stage.id, (id) => {
+                        setSelectedDreStep(id);
+                        openFinancialDetails({ type: "dre-stage", stage: id, month: dreMonth, detailReport: "DRE", detailMonth: dreMonth });
+                      })}
                     >
                       <rect className="dre-step-hit-area" x={stage.center - 60} y="14" width="120" height="298" rx="12" />
                       <rect className={`dre-chart-bar ${fillClass}`} x={stage.center - 30} y={stage.barY} width="60" height={stage.barHeight} rx="6" />
@@ -1039,29 +1152,26 @@ export default function FinanceiroPage() {
             </div>
           )}
           <p className="dre-chart-footnote">Os valores consideram lançamentos confirmados classificados para DRE no mês selecionado.</p>
-          <div className="dre-cash-summary" aria-label={`Resumo de caixa de ${formatDreMonth(dreMonth)}`}>
+          <div className="dre-cash-summary" aria-label={`Indicadores de resultado e caixa de ${formatDreMonth(dreMonth)}`}>
             <div>
-              <span>Caixa inicial</span>
-              <strong className={dreCashPosition ? (dreCashPosition.openingBalance < 0 ? "is-negative" : "is-positive") : "is-unavailable"}>
-                {dreCashPosition ? brlExact(dreCashPosition.openingBalance) : "—"}
+              <span>Receita bruta</span>
+              <strong className={dreFinancials ? (dreFinancials.grossRevenue < 0 ? "is-negative" : "is-positive") : "is-unavailable"}>
+                {dreFinancials ? brlExact(dreFinancials.grossRevenue) : "—"}
               </strong>
             </div>
             <div>
               <span>Caixa gerado</span>
               <strong className={dreCashFlow ? (dreCashFlow.freeCashFlow < 0 ? "is-negative" : "is-positive") : "is-unavailable"}>
-                {dreCashFlow ? signedBrl(dreCashFlow.freeCashFlow) : "—"}
+                {dreCashFlow ? signedBrl(dreCashFlow.freeCashFlow) : data ? "Sem dados de caixa" : "—"}
               </strong>
             </div>
             <div>
-              <span>Saldo final</span>
-              <strong className={dreCashPosition ? (dreCashPosition.closingBalance < 0 ? "is-negative" : "is-positive") : "is-unavailable"}>
-                {dreCashPosition ? brlExact(dreCashPosition.closingBalance) : "—"}
+              <span>Lucro líquido</span>
+              <strong className={dreFinancials ? (dreFinancials.netProfit < 0 ? "is-negative" : "is-positive") : "is-unavailable"}>
+                {dreFinancials ? brlExact(dreFinancials.netProfit) : "—"}
               </strong>
             </div>
           </div>
-          {!dreCashPosition && (
-            <p className="dre-cash-note">Cadastre o saldo inicial e a data em Configurações para calcular o saldo restante deste mês.</p>
-          )}
         </div>
 
         <aside className="card dre-detail-card" aria-live="polite" aria-atomic="true">
@@ -1088,23 +1198,36 @@ export default function FinanceiroPage() {
           </div>
           {selectedDreItems.length ? (
             <ul className="dre-breakdown-list">
-              {selectedDreItems.map((item) => {
+              {(dreItemsExpanded ? selectedDreItems : selectedDreItems.slice(0, 5)).map((item) => {
                 const tone = item.value > 0 ? "positive" : item.value < 0 ? "negative" : "neutral";
                 return (
                   <li className="dre-breakdown-row" key={item.id}>
-                    <span className={`dre-breakdown-dot is-${tone}`} aria-hidden="true" />
-                    <div className="dre-breakdown-copy">
-                      <span>{item.label}</span>
-                      <small>{item.note}</small>
-                    </div>
-                    <strong className={`dre-breakdown-value is-${tone}`}>{signedBrl(item.value)}</strong>
-                    <span className="dre-breakdown-share">{dreRevenue ? percent((Math.abs(item.value) / dreRevenue) * 100) : "—"} da receita</span>
+                    <button
+                      className="dre-breakdown-row-action"
+                      type="button"
+                      aria-label={`Ver lançamentos de ${item.label}`}
+                      onClick={() => openFinancialDetails({ type: "dre-category", category: item.label, stage: selectedDreStep, month: dreMonth, detailReport: "DRE", detailMonth: dreMonth })}
+                    >
+                      <span className={`dre-breakdown-dot is-${tone}`} aria-hidden="true" />
+                      <span className="dre-breakdown-copy">
+                        <span>{item.label}</span>
+                        <small>{item.note}</small>
+                      </span>
+                      <strong className={`dre-breakdown-value is-${tone}`}>{signedBrl(item.value)}</strong>
+                      <span className="dre-breakdown-share">{dreRevenue ? percent((Math.abs(item.value) / dreRevenue) * 100) : "—"} da receita</span>
+                    </button>
                   </li>
                 );
               })}
             </ul>
           ) : (
             <p className="dre-breakdown-empty">Nenhum lançamento detalhado compõe esta etapa neste mês.</p>
+          )}
+          {selectedDreItems.length > 5 && (
+            <button className="finance-show-more" type="button" onClick={() => setDreItemsExpanded((expanded) => !expanded)}>
+              {dreItemsExpanded ? "Mostrar menos" : `Mostrar todos os ${selectedDreItems.length} itens`}
+              <ChevronDown className={dreItemsExpanded ? "is-open" : ""} size={15} aria-hidden="true" />
+            </button>
           )}
           <p className="dre-insight">
             {dreRevenue
@@ -1132,17 +1255,65 @@ export default function FinanceiroPage() {
               <h2>Fluxo de caixa do período</h2>
             </div>
           </div>
+          <div className="finance-cash-summary" aria-label="Resumo de caixa do período">
+            <div>
+              <span>Caixa inicial</span>
+              <strong className={data?.cashPosition ? (data.cashPosition.openingBalance < 0 ? "is-negative" : "is-positive") : "is-unavailable"}>
+                {data?.cashPosition ? brlExact(data.cashPosition.openingBalance) : data ? "Não configurado" : "—"}
+              </strong>
+            </div>
+            <div>
+              <span>Caixa gerado</span>
+              <strong className={(cashFlow?.freeCashFlow ?? 0) < 0 ? "is-negative" : "is-positive"}>
+                {cashFlow ? signedBrl(cashFlow.freeCashFlow) : "—"}
+              </strong>
+            </div>
+            <div>
+              <span>Saldo final</span>
+              <strong className={data?.cashPosition ? (data.cashPosition.closingBalance < 0 ? "is-negative" : "is-positive") : "is-unavailable"}>
+                {data?.cashPosition ? brlExact(data.cashPosition.closingBalance) : data ? "Não configurado" : "—"}
+              </strong>
+            </div>
+          </div>
           <div className="finance-summary-list">
             <div className="finance-summary-row"><span>Fluxo operacional</span><strong>{signedBrl(cashFlow?.operational ?? 0)}</strong></div>
             <div className="finance-summary-row"><span>Fluxo não operacional</span><strong>{signedBrl(cashFlow?.nonOperating ?? 0)}</strong></div>
             <div className="finance-summary-row"><span>Investimentos</span><strong>{signedBrl(cashFlow?.investments ?? 0)}</strong></div>
             <div className="finance-summary-row"><span>Financiamentos e aportes</span><strong>{signedBrl(cashFlow?.financing ?? 0)}</strong></div>
             <div className="finance-summary-row total"><span>Fluxo de caixa livre</span><strong>{signedBrl(cashFlow?.freeCashFlow ?? 0)}</strong></div>
-            {data?.cashPosition && <>
-              <div className="finance-summary-row"><span>Saldo no início do período</span><strong>{brlExact(data.cashPosition.openingBalance)}</strong></div>
-              <div className="finance-summary-row target"><span>Saldo final calculado</span><strong>{brlExact(data.cashPosition.closingBalance)}</strong></div>
-            </>}
           </div>
+          <div className="cash-expense-details">
+            <button
+              className={`expense-details-toggle ${cashExpenseDetailsOpen ? "is-open" : ""}`}
+              type="button"
+              aria-expanded={cashExpenseDetailsOpen}
+              onClick={() => setCashExpenseDetailsOpen((open) => !open)}
+            >
+              {cashExpenseDetailsOpen ? "Ocultar saídas por categoria" : "Ver saídas por categoria"}
+              <ChevronDown size={14} aria-hidden="true" />
+            </button>
+            {cashExpenseDetailsOpen && (cashExpenseCategories.length ? (
+              <ul className="expense-category-details" aria-label="Saídas confirmadas por categoria na DFC">
+                {cashExpenseCategories.map((entry, index) => (
+                  <li key={entry.category}>
+                    <button
+                      type="button"
+                      className="expense-category-detail-action"
+                      onClick={() => openFinancialDetails({ type: "expense-category", category: entry.category, report: "DFC", detailReport: "DFC" })}
+                    >
+                      <i style={{ background: expenseCategoryColor(entry.category, index) }} aria-hidden="true" />
+                      <span>{expenseCategoryLabel(entry.category)}</span>
+                      <b>{brl(entry.amount)}</b>
+                      <em>{percent(entry.share * 100)}</em>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="dre-breakdown-empty">Nenhuma saída confirmada para a DFC neste período.</p>)}
+          </div>
+          <button className="finance-inline-link" type="button" onClick={() => openFinancialDetails({ type: "cashflow", report: "DFC", detailReport: "DFC" })}>
+            Ver lançamentos do fluxo de caixa <span aria-hidden="true">→</span>
+          </button>
           <p className="small muted finance-note">O fluxo considera lançamentos confirmados marcados para a DFC e usa a data de caixa quando informada. {data?.cashPosition ? "O saldo final parte do saldo inicial cadastrado em Configurações." : "Cadastre o saldo inicial e a data em Configurações para calcular o saldo final."}</p>
         </div>
 
@@ -1195,6 +1366,15 @@ export default function FinanceiroPage() {
                   onChange={(event) => setForm({ ...form, description: event.target.value })}
                   placeholder="Cliente ABC"
                   required
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="counterparty">Cliente / favorecido</label>
+                <input
+                  id="counterparty"
+                  value={form.counterparty}
+                  onChange={(event) => setForm({ ...form, counterparty: event.target.value })}
+                  placeholder="Ex.: cliente ou fornecedor"
                 />
               </div>
               <div className="field">
@@ -1323,10 +1503,13 @@ export default function FinanceiroPage() {
               </tr>
             </thead>
             <tbody>
-              {(data?.transactions ?? []).map((transaction) => (
+              {visibleTransactions.map((transaction) => (
                 <tr key={transaction.id}>
                   <td>
                     <strong>{transaction.description}</strong>
+                    <div className="small muted" style={{ marginTop: 4 }}>
+                      {transaction.counterparty ? `Para: ${transaction.counterparty}` : "Favorecido não informado"}
+                    </div>
                     <div className="small muted" style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
                       {transaction.source ?? "manual"}
                       {transaction.auto && (
@@ -1377,6 +1560,12 @@ export default function FinanceiroPage() {
             </tbody>
           </table>
         </div>
+        {allTransactions.length > 5 && (
+          <button className="finance-show-more transaction-show-more" type="button" onClick={() => setTransactionsExpanded((expanded) => !expanded)}>
+            {transactionsExpanded ? "Mostrar apenas os 5 primeiros" : `Mostrar os ${allTransactions.length} lançamentos`}
+            <ChevronDown className={transactionsExpanded ? "is-open" : ""} size={15} aria-hidden="true" />
+          </button>
+        )}
         {!loading && !data?.transactions.length && (
           <p className="empty" style={{ marginTop: 16 }}>
             Nenhum lançamento neste filtro. Cadastre o primeiro para ver os números reais.
@@ -1393,6 +1582,7 @@ function FinanceCard({
   value,
   delta,
   positive,
+  onClick,
 }: {
   icon: React.ReactNode;
   tone: string;
@@ -1400,9 +1590,10 @@ function FinanceCard({
   value: string;
   delta: string;
   positive: boolean;
+  onClick: () => void;
 }) {
   return (
-    <div className="kpi-card">
+    <button className="kpi-card kpi-card-action" type="button" onClick={onClick}>
       <div className="kpi-head">
         <div className={`kpi-icon ${tone}`}>{icon}</div>
         <div>
@@ -1418,6 +1609,6 @@ function FinanceCard({
         <span style={{ color: positive ? "#4ade80" : "#ff8f7a", fontWeight: 600 }}>{delta}</span>
         <span>vs. período anterior</span>
       </div>
-    </div>
+    </button>
   );
 }

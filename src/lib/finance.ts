@@ -48,11 +48,8 @@ function reportDates(transaction: Transaction, report: FinancialStatement) {
 
 function hasConfirmedCashDate(transaction: Transaction) {
   if (transaction.financialReport === "DFC") return true;
-  if (!transaction.cashDate) return false;
-  if (transaction.cashDateConfirmed === true) return true;
-  return transaction.financialReport === "BOTH" && Boolean(
-    transaction.cashDate && transaction.cashDate !== (transaction.competenceDate ?? transaction.date),
-  );
+  if (transaction.financialReport !== "BOTH" || !transaction.cashDate) return false;
+  return transaction.cashDateConfirmed !== false;
 }
 
 function cashDateFor(transaction: Transaction) {
@@ -163,6 +160,19 @@ export type CashFlowFinancials = {
   financing: number;
   freeCashFlow: number;
 };
+
+export type CashFlowBreakdownGroup =
+  | "operating-income"
+  | "tax"
+  | "direct"
+  | "operating-expense"
+  | "financial-income"
+  | "financial-expense"
+  | "non-operating-income"
+  | "non-operating-expense"
+  | "investment-expense"
+  | "financing-income"
+  | "financing-expense";
 
 function sum(transactions: Transaction[]) {
   return transactions.reduce((total, transaction) => total + transaction.amount, 0);
@@ -388,6 +398,25 @@ export function calculateCashFlow(transactions: Transaction[]): CashFlowFinancia
   return { operational, nonOperating, investments, financing, freeCashFlow: operational + nonOperating + investments + financing };
 }
 
+/** Classifica a origem de cada parcela exatamente pelas regras do cálculo de caixa. */
+export function classifyCashFlowTransaction(transaction: Transaction): CashFlowBreakdownGroup | null {
+  if (transaction.kind === "INCOME") {
+    if (transactionIsOperatingIncome(transaction)) return "operating-income";
+    if (transactionIsFinancial(transaction)) return "financial-income";
+    if (transactionIsNonOperating(transaction)) return "non-operating-income";
+    if (transactionIsFinancing(transaction)) return "financing-income";
+    return null;
+  }
+
+  if (transactionIsTax(transaction)) return "tax";
+  if (transactionIsDirectCost(transaction)) return "direct";
+  if (transactionIsFinancial(transaction)) return "financial-expense";
+  if (transactionIsNonOperating(transaction)) return "non-operating-expense";
+  if (transactionIsInvestment(transaction)) return "investment-expense";
+  if (transactionIsFinancing(transaction)) return "financing-expense";
+  return "operating-expense";
+}
+
 export type CashPosition = { openingBalance: number; closingBalance: number };
 
 export function calculateCashPosition(
@@ -518,15 +547,21 @@ export type DreBreakdownGroup =
 
 export type DreBreakdownTotal = { group: DreBreakdownGroup; category: string; amount: number };
 
-export function categoryBreakdown(transactions: Transaction[], kind: Transaction["kind"]): CategoryTotal[] {
+export function categoryBreakdown(
+  transactions: Transaction[],
+  kind: Transaction["kind"],
+  report: "DRE" | "DFC" = "DRE",
+): CategoryTotal[] {
   const scoped = transactions.filter(
     (transaction) =>
       transaction.kind === kind &&
       transaction.status === "CONFIRMED" &&
-      reportIncludes(transaction, "DRE") &&
-      (kind === "INCOME"
-        ? !transactionIsFinancial(transaction) && !transactionIsNonOperating(transaction) && !transactionIsInvestment(transaction) && !transactionIsFinancing(transaction)
-        : !transactionIsInvestment(transaction) && !transactionIsFinancing(transaction)),
+      reportIncludes(transaction, report) &&
+      (report === "DFC" && kind === "EXPENSE"
+        ? true
+        : kind === "INCOME"
+          ? !transactionIsFinancial(transaction) && !transactionIsNonOperating(transaction) && !transactionIsInvestment(transaction) && !transactionIsFinancing(transaction)
+          : !transactionIsInvestment(transaction) && !transactionIsFinancing(transaction)),
   );
   const total = sum(scoped);
   const totals = new Map<string, number>();
@@ -539,25 +574,27 @@ export function categoryBreakdown(transactions: Transaction[], kind: Transaction
 }
 
 /** Agrupa os lançamentos confirmados com as mesmas regras contábeis usadas no cálculo da DRE. */
+export function classifyDreTransaction(transaction: Transaction): DreBreakdownGroup | null {
+  if (transaction.kind === "INCOME") {
+    if (transactionIsOperatingIncome(transaction)) return "revenue";
+    if (transactionIsFinancial(transaction)) return "financial-income";
+    if (transactionIsNonOperating(transaction)) return "non-operating-income";
+    return null;
+  }
+  if (transactionIsInvestment(transaction) || transactionIsFinancing(transaction)) return null;
+  if (transactionIsTax(transaction)) return "tax";
+  if (transactionIsDirectCost(transaction)) return "direct";
+  if (transactionIsFinancial(transaction)) return "financial-expense";
+  if (transactionIsNonOperating(transaction)) return "non-operating-expense";
+  return "operating";
+}
+
 export function dreBreakdown(transactions: Transaction[]): DreBreakdownTotal[] {
   const scoped = statementTransactions(transactions, "DRE");
   const totals = new Map<string, DreBreakdownTotal>();
 
   for (const transaction of scoped) {
-    let group: DreBreakdownGroup | null = null;
-
-    if (transaction.kind === "INCOME") {
-      if (transactionIsOperatingIncome(transaction)) group = "revenue";
-      else if (transactionIsFinancial(transaction)) group = "financial-income";
-      else if (transactionIsNonOperating(transaction)) group = "non-operating-income";
-    } else if (!transactionIsInvestment(transaction) && !transactionIsFinancing(transaction)) {
-      if (transactionIsTax(transaction)) group = "tax";
-      else if (transactionIsDirectCost(transaction)) group = "direct";
-      else if (transactionIsFinancial(transaction)) group = "financial-expense";
-      else if (transactionIsNonOperating(transaction)) group = "non-operating-expense";
-      else group = "operating";
-    }
-
+    const group = classifyDreTransaction(transaction);
     if (!group) continue;
     const key = `${group}\u0000${transaction.category}`;
     const current = totals.get(key);

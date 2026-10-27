@@ -39,10 +39,19 @@ export async function GET(request: Request) {
     : currentDreMonth;
   const category = url.searchParams.get("category");
   const kind = url.searchParams.get("kind");
+  const detailMonth = url.searchParams.get("detailMonth");
+  const requestedDetailReport = url.searchParams.get("detailReport");
+  const detailReport = requestedDetailReport === "DRE" || requestedDetailReport === "DFC" || requestedDetailReport === "ANY"
+    ? requestedDetailReport
+    : null;
 
   return withWorkspaceDatabase(request, (db) => {
     const reference = new Date();
-    const listed = filterByPeriod(db.transactions, period, reference, "ANY");
+    const listed = detailReport
+      ? detailMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(detailMonth)
+        ? filterByMonth(db.transactions, detailMonth, detailReport)
+        : filterByPeriod(db.transactions, period, reference, detailReport)
+      : filterByPeriod(db.transactions, period, reference, "ANY");
     const dreScoped = filterByPeriod(db.transactions, period, reference, "DRE");
     const selectedDreScoped = filterByMonth(db.transactions, dreMonth, "DRE");
     const cashScoped = filterByPeriod(db.transactions, period, reference, "DFC");
@@ -65,9 +74,7 @@ export async function GET(request: Request) {
       financials: current,
       dreFinancials: calculateFinancials(selectedDreScoped),
       cashFlow: calculateCashFlow(cashScoped),
-      dreCashFlow: selectedDreCashScoped.some((transaction) => transaction.status === "CONFIRMED")
-        ? calculateCashFlow(selectedDreCashScoped)
-        : null,
+      dreCashFlow: calculateCashFlow(selectedDreCashScoped),
       dreCashPosition: calculateCashPositionForMonth(
         db.transactions,
         dreMonth,
@@ -91,6 +98,7 @@ export async function GET(request: Request) {
       performanceSeries: dailyFinancialSeries(filterByMonth(db.transactions, chartMonth, "DRE")),
       incomeByCategory: categoryBreakdown(dreScoped, "INCOME"),
       expensesByCategory: categoryBreakdown(dreScoped, "EXPENSE"),
+      cashExpensesByCategory: categoryBreakdown(cashScoped, "EXPENSE", "DFC"),
       dreBreakdown: dreBreakdown(selectedDreScoped),
       automated: listed.filter((transaction) => transaction.auto).length,
     });
@@ -108,6 +116,7 @@ export async function POST(request: Request) {
       companyId: db.company.id,
       kind: body.kind,
       date: body.date ?? body.competenceDate ?? body.cashDate ?? new Date().toISOString().slice(0, 10),
+      ...(body.counterparty ? { counterparty: body.counterparty } : {}),
       ...(body.financialReport !== "DFC" ? { competenceDate: body.competenceDate ?? body.date } : {}),
       ...(body.financialReport === "DFC" ? { cashDate: body.cashDate ?? body.date } : body.financialReport === "BOTH" && body.cashDate ? { cashDate: body.cashDate } : {}),
       ...(body.financialReport === "DFC" || (body.financialReport === "BOTH" && body.cashDate) ? { cashDateConfirmed: true } : {}),

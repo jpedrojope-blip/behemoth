@@ -8,6 +8,7 @@ const percentValue = z.coerce.number().min(0).max(100);
 
 export const transactionCreateSchema = z.object({
   description: z.string().trim().min(1, "Informe a descrição."),
+  counterparty: z.string().trim().max(120).optional(),
   amount: money,
   kind: z.enum(["INCOME", "EXPENSE"]),
   category: z.string().trim().optional(),
@@ -27,6 +28,7 @@ export const transactionCreateSchema = z.object({
 
 export const transactionUpdateSchema = z.object({
   description: z.string().trim().min(1).optional(),
+  counterparty: z.string().trim().max(120).optional(),
   amount: money.optional(),
   kind: z.enum(["INCOME", "EXPENSE"]).optional(),
   category: z.string().trim().min(1).optional(),

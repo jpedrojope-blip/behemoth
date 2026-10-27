@@ -30,7 +30,7 @@ const KIND_TONES: Record<CalendarEvent["kind"], string> = {
 };
 
 const MINI_WEEKDAYS = ["D", "S", "T", "Q", "Q", "S", "S"];
-const SHORT_WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const WEEKDAY_NAMES = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
 
 type CalendarDay = { date: string; day: number; inMonth: boolean };
 
@@ -76,7 +76,8 @@ export default function CalendarioPage() {
   const weekDays = useMemo<CalendarDay[]>(() => {
     const [year, monthNumber, dayNumber] = selectedDay.split("-").map(Number);
     const selected = new Date(year, monthNumber - 1, dayNumber);
-    const weekStart = new Date(year, monthNumber - 1, dayNumber - selected.getDay());
+    const daysSinceMonday = (selected.getDay() + 6) % 7;
+    const weekStart = new Date(year, monthNumber - 1, dayNumber - daysSinceMonday);
     return Array.from({ length: 7 }, (_, index) => {
       const date = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + index);
       return { date: dateKey(date), day: date.getDate(), inMonth: date.getMonth() === cursor.getMonth() };
@@ -377,22 +378,32 @@ export default function CalendarioPage() {
                   aria-selected={isSelected}
                 >
                   <div className="calendar-week-heading">
-                    <span className="calendar-weekday-label">{SHORT_WEEKDAYS[index]}</span>
+                    <span className="calendar-weekday-label">{WEEKDAY_NAMES[index]}</span>
                     <button className="calendar-day-select" onClick={() => selectDay(day.date)} aria-label={`Selecionar dia ${shortDate(day.date)}`}>
                       <span className="calendar-day">{day.day}</span>
                     </button>
                   </div>
                   <div className="calendar-week-events">
                     {events.slice(0, 4).map((event) => (
-                      <button
-                        key={event.id}
-                        className={`calendar-week-event ${KIND_TONES[event.kind]} ${event.done ? "is-done" : ""}`}
-                        title={`${event.time} · ${event.title}`}
-                        onClick={() => selectDay(day.date)}
-                      >
-                        <span>{event.time}</span>
-                        <strong>{event.title}</strong>
-                      </button>
+                      <div className="calendar-week-event-wrap" key={event.id}>
+                        <button
+                          className={`calendar-week-event ${KIND_TONES[event.kind]} ${event.done ? "is-done" : ""}`}
+                          title={`${event.time} · ${event.title}`}
+                          onClick={() => selectDay(day.date)}
+                        >
+                          <span>{event.time}</span>
+                          <strong>{event.title}</strong>
+                        </button>
+                        <button
+                          className="calendar-week-event-delete"
+                          type="button"
+                          title="Excluir compromisso"
+                          aria-label={`Excluir ${event.title}`}
+                          onClick={() => void remove(event)}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
                     ))}
                     {events.length > 4 && <span className="calendar-more">+{events.length - 4} outros</span>}
                   </div>

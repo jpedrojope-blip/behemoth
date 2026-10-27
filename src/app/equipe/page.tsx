@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppSelect } from "@/components/ui/app-select";
 import Link from "next/link";
 import Image from "next/image";
@@ -10,9 +10,7 @@ import {
   ChevronRight,
   DollarSign,
   Gauge as GaugeIcon,
-  Mail,
-  MapPin,
-  Phone,
+  ListTodo,
   Plus,
   Search,
   Target,
@@ -23,7 +21,6 @@ import {
 } from "lucide-react";
 import { Donut } from "@/components/ui/donut";
 import { BarChart } from "@/components/ui/bar-chart";
-import { Gauge } from "@/components/ui/gauge";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch, useResource } from "@/lib/client";
 import { brl, initials } from "@/lib/format";
@@ -104,6 +101,7 @@ const FILTERS: { key: Filter; label: string }[] = [
 export default function EquipePage() {
   const { data, loading, error } = useResource<Payload>("/api/team");
   const { data: workflow, loading: tasksLoading, error: tasksError } = useResource<WorkflowPayload>("/api/workflows");
+  const formRef = useRef<HTMLFormElement | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -115,6 +113,17 @@ export default function EquipePage() {
   useEffect(() => {
     if (new URLSearchParams(window.location.search).has("novo")) setFormOpen(true);
   }, []);
+
+  useEffect(() => {
+    if (!formOpen) return;
+    formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    formRef.current?.querySelector<HTMLInputElement>("#team-name")?.focus({ preventScroll: true });
+  }, [formOpen, form.type]);
+
+  function openTeamForm(type: TeamMember["type"]) {
+    setForm({ ...EMPTY_FORM, type });
+    setFormOpen(true);
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -182,6 +191,26 @@ export default function EquipePage() {
         : true,
     );
 
+  const directoryGroupMap = new Map<string, TeamMemberProfile[]>();
+  team.forEach((member) => {
+    const normalizedRole = `${member.role} ${member.department}`
+      .toLocaleLowerCase("pt-BR")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    const isLeadership = /\b(fundador|fundadora|cofundador|cofundadora|founder|cofounder|ceo|owner|partner|proprietario|proprietaria|socio|socia|presidente|diretor|diretora)\b/.test(normalizedRole);
+    const groupName = member.type === "AI"
+      ? "Agentes de IA"
+      : isLeadership
+        ? "Fundadores e liderança"
+        : member.department.trim() || "Equipe";
+    directoryGroupMap.set(groupName, [...(directoryGroupMap.get(groupName) ?? []), member]);
+  });
+  const directoryGroups = Array.from(directoryGroupMap.entries())
+    .sort(([firstName], [secondName]) => {
+      const order = (name: string) => name === "Fundadores e liderança" ? 0 : name === "Agentes de IA" ? 2 : 1;
+      return order(firstName) - order(secondName) || firstName.localeCompare(secondName, "pt-BR");
+    });
+
   const agents = all.filter((member) => member.type === "AI");
   const activeAgents = agents.filter((member) => member.status === "ACTIVE");
   const agentCost = activeAgents.reduce((sum, member) => sum + member.monthlyCost, 0);
@@ -193,7 +222,7 @@ export default function EquipePage() {
           <h1 className="page-title">Gestão de Funcionários e Agentes</h1>
           <p className="subtitle">Acompanhe os dados profissionais, tarefas e resultados da equipe.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setFormOpen((open) => !open)}>
+        <button className="btn btn-primary" type="button" onClick={() => formOpen ? setFormOpen(false) : openTeamForm("HUMAN")}>
           {formOpen ? <X size={16} /> : <Plus size={16} />} {formOpen ? "Cancelar" : "Adicionar"}
         </button>
       </div>
@@ -262,7 +291,7 @@ export default function EquipePage() {
       )}
 
       {formOpen && (
-        <form className="section card team-form" onSubmit={submit}>
+        <form className="section card team-form" ref={formRef} onSubmit={submit}>
           <div className="team-form-heading">
             <div>
               <p className="card-kicker">NOVO CADASTRO</p>
@@ -458,12 +487,12 @@ export default function EquipePage() {
           </div>
           {data?.costAutomation && <p className="small muted team-savings-note">Os custos cadastrados entram automaticamente como despesa mensal no Relatório.</p>}
           <div className="team-quick-actions">
-            <button className="action-row" onClick={() => { setForm({ ...EMPTY_FORM, type: "HUMAN" }); setFormOpen(true); }}>
+            <button className="action-row" type="button" onClick={() => openTeamForm("HUMAN")}>
               <span className="icon"><User size={18} /></span>
               <span className="team-action-copy"><strong>Adicionar funcionário</strong><small>Perfil, contato e vínculo</small></span>
               <ChevronRight size={16} />
             </button>
-            <button className="action-row" onClick={() => { setForm({ ...EMPTY_FORM, type: "AI" }); setFormOpen(true); }}>
+            <button className="action-row" type="button" onClick={() => openTeamForm("AI")}>
               <span className="icon"><Bot size={18} /></span>
               <span className="team-action-copy"><strong>Criar agente de IA</strong><small>Modelo, objetivo e integrações</small></span>
               <ChevronRight size={16} />
@@ -492,105 +521,72 @@ export default function EquipePage() {
               </button>
             ))}
           </div>
+          <Link className="btn btn-ghost team-directory-pipeline-link" href="/pipeline">
+            <ListTodo size={15} aria-hidden="true" /> Abrir Pipeline <ChevronRight size={14} aria-hidden="true" />
+          </Link>
           <span className="team-directory-count">{team.length} de {all.length} integrantes</span>
         </div>
 
-        <div className="member-grid">
-          {team.map((member) => {
-            const verdict = judge(member);
-            const profileHref = `/equipe/${encodeURIComponent(member.id)}`;
-            const memberSkills = member.skills ?? [];
-            const location = formatTeamLocation(member);
-            return (
-              <article className={`member-card ${member.type === "AI" ? "is-agent" : "is-human"}`} key={member.id}>
-                <div className="member-top">
-                  <div className={`member-avatar ${member.type === "AI" ? "ai" : ""} ${member.avatarDataUrl ? "has-photo" : ""}`}>
-                    {member.avatarDataUrl ? <Image src={member.avatarDataUrl} alt={`Foto de ${member.name}`} width={54} height={54} unoptimized /> : member.type === "AI" ? <Bot size={21} /> : initials(member.name)}
-                  </div>
-                  <div className="member-info">
-                    <span className={`pill ${member.type === "AI" ? "purple" : "blue"}`}>{member.type === "AI" ? "Agente IA" : "Funcionário"}</span>
-                    <strong>{member.name}</strong>
-                    <span>{member.role}</span>
-                    {member.department && <span className="member-department">{member.department}</span>}
-                  </div>
-                  <button className="icon-action danger" onClick={() => remove(member)} title="Remover" aria-label={`Remover ${member.name}`}>
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-
-                {member.bio && <p className="member-bio">{member.bio}</p>}
-
-                {member.type === "HUMAN" ? (
-                  <>
-                    <div className="member-contact">
-                      {member.email && <span><Mail size={13} />{member.email}</span>}
-                      {member.phone && <span><Phone size={13} />{member.phone}</span>}
-                      {location && <span><MapPin size={13} />{location}</span>}
-                    </div>
-                    <div className="member-profile-meta">
-                      {member.employmentType && <span><small>Vínculo</small><b>{employmentTypeLabel(member.employmentType)}</b></span>}
-                      {member.manager && <span><small>Liderança</small><b>{member.manager}</b></span>}
-                      {member.startDate && <span><small>Entrada</small><b>{formatDate(member.startDate)}</b></span>}
-                    </div>
-                    <div className="member-next-task">
-                      <CalendarDays size={14} />
-                      {member.metrics.nextTaskTitle ? (
-                        <span><b>Próxima tarefa:</b> {member.metrics.nextTaskTitle} · {formatDate(member.metrics.nextTaskDueDate)}</span>
-                      ) : (
-                        <span>Sem tarefa pendente</span>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <div className="member-agent-meta">
-                    <span><small>Provedor</small><b>{member.agentProvider || "Não informado"}</b></span>
-                    <span><small>Modelo</small><b>{member.agentModel || "Não informado"}</b></span>
-                    {member.agentPurpose && <p>{member.agentPurpose}</p>}
-                    {(member.agentIntegrations ?? []).length > 0 && (
-                      <div className="member-skill-list" aria-label="Integrações">
-                        {(member.agentIntegrations ?? []).map((integration) => <span key={integration}>{integration}</span>)}
+        <div className="team-roster">
+          {directoryGroups.map(([groupName, members], groupIndex) => (
+            <section className="team-roster-group" key={groupName} aria-labelledby={`team-roster-heading-${groupIndex}`}>
+              <div className="team-roster-group-heading">
+                <h3 id={`team-roster-heading-${groupIndex}`}>{groupName}</h3>
+                <span>{members.length} {members.length === 1 ? "integrante" : "integrantes"}</span>
+              </div>
+              <div className="team-roster-grid">
+                {members.map((member) => {
+                  const profileHref = `/equipe/${encodeURIComponent(member.id)}`;
+                  return (
+                    <article className={`roster-card ${member.type === "AI" ? "is-agent" : "is-human"}`} key={member.id}>
+                      <div className="roster-portrait-wrap">
+                        <Link className="roster-portrait" href={profileHref} aria-label={`Abrir perfil de ${member.name}`} title={`Abrir perfil de ${member.name}`}>
+                          {member.avatarDataUrl
+                            ? <Image className="roster-portrait-image" src={member.avatarDataUrl} alt={`Foto de ${member.name}`} fill sizes="(max-width: 560px) 50vw, 250px" unoptimized />
+                            : member.type === "AI"
+                              ? <span className="roster-avatar-fallback ai"><Bot size={35} aria-hidden="true" /></span>
+                              : <span className="roster-avatar-fallback">{initials(member.name)}</span>}
+                        </Link>
+                        <span className={`roster-type ${member.type === "AI" ? "ai" : "human"}`}>{member.type === "AI" ? "Agente IA" : "Funcionário"}</span>
+                        <button className="roster-remove" type="button" onClick={() => remove(member)} title={`Remover ${member.name}`} aria-label={`Remover ${member.name}`}>
+                          <Trash2 size={15} aria-hidden="true" />
+                        </button>
                       </div>
-                    )}
-                  </div>
-                )}
-
-                {memberSkills.length > 0 && (
-                  <div className="member-skill-list" aria-label={member.type === "AI" ? "Capacidades" : "Competências"}>
-                    {memberSkills.map((skill) => <span key={skill}>{skill}</span>)}
-                  </div>
-                )}
-
-                {member.type === "HUMAN" ? (
-                  <div className="member-gauges">
-                    {member.metrics.assignedTasks > 0 ? <Gauge value={member.metrics.completionRate} label="Tarefas concluídas" /> : <div className="member-auto-notice">Sem tarefas atribuídas</div>}
-                    <div className="member-auto-metric">
-                      <span>ROI estimado</span>
-                      <strong>{member.metrics.roi == null ? "—" : `${member.metrics.roi}%`}</strong>
-                      <small>{brl(member.metrics.finalizedValue)} finalizados no mês</small>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="member-gauges">
-                    {member.metrics.assignedTasks > 0 ? <Gauge value={member.metrics.completionRate} label="Tarefas concluídas" /> : <div className="member-auto-notice">Sem tarefas atribuídas</div>}
-                    <div className="member-auto-metric">
-                      <span>Tarefas em aberto</span>
-                      <strong>{member.metrics.assignedTasks - member.metrics.completedTasks}</strong>
-                      <small>Acompanhe pela Pipeline</small>
-                    </div>
-                  </div>
-                )}
-
-                <div className="member-foot">
-                  <Link className="member-open-link" href={profileHref}>Abrir perfil <ChevronRight size={15} /></Link>
-                  <button className={`pill ${member.status === "ACTIVE" ? "green" : "amber"}`} type="button" onClick={() => patch(member, { status: member.status === "ACTIVE" ? "REVIEW" : "ACTIVE" })}>
-                    {member.status === "ACTIVE" ? "Ativo" : "Em revisão"}
-                  </button>
-                  <div className="member-card-cost"><small>Custo / mês</small><b>{brl(member.monthlyCost)}</b></div>
-                </div>
-                <span className={`member-verdict ${verdict.tone}`}>{verdict.text}</span>
-              </article>
-            );
-          })}
+                      <div className="roster-card-copy">
+                        <Link className="roster-member-name" href={profileHref}>{member.name}</Link>
+                        <p>{member.role || (member.type === "AI" ? "Agente de IA" : "Integrante da equipe")}</p>
+                        <span className="roster-department">{member.department || (member.type === "AI" ? "Automação" : "Equipe")}</span>
+                      </div>
+                      <div className="roster-card-foot">
+                        <button
+                          className={`roster-status ${member.status === "ACTIVE" ? "active" : "review"}`}
+                          type="button"
+                          onClick={() => patch(member, { status: member.status === "ACTIVE" ? "REVIEW" : "ACTIVE" })}
+                          aria-label={`Alterar status de ${member.name}. Atual: ${member.status === "ACTIVE" ? "ativo" : "em revisão"}`}
+                        >
+                          <span aria-hidden="true" />{member.status === "ACTIVE" ? "Ativo" : "Em revisão"}
+                        </button>
+                        <span className="roster-member-cost"><small>Custo / mês</small><strong>{brl(member.monthlyCost)}</strong></span>
+                      </div>
+                      <Link className="roster-profile-link" href={profileHref}>Ver perfil <ChevronRight size={15} aria-hidden="true" /></Link>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+          {team.length > 0 && (
+            <aside className="team-roster-cta">
+              <span className="team-roster-cta-icon"><Plus size={20} aria-hidden="true" /></span>
+              <div>
+                <strong>Adicione alguém à equipe</strong>
+                <p>Crie um novo perfil para acompanhar tarefas e resultados.</p>
+              </div>
+              <button className="btn btn-primary" type="button" onClick={() => openTeamForm("HUMAN")}>
+                Adicionar integrante <ChevronRight size={15} aria-hidden="true" />
+              </button>
+            </aside>
+          )}
         </div>
 
         {!loading && !team.length && (
@@ -655,34 +651,10 @@ function splitTags(value: string) {
   return [...new Set(value.split(",").map((entry) => entry.trim()).filter(Boolean))].slice(0, 12);
 }
 
-function employmentTypeLabel(value: NonNullable<TeamMember["employmentType"]>) {
-  const labels: Record<NonNullable<TeamMember["employmentType"]>, string> = {
-    CLT: "CLT",
-    PJ: "Pessoa jurídica",
-    INTERN: "Estágio",
-    TEMPORARY: "Temporário",
-    OTHER: "Outro",
-    "": "Não informado",
-  };
-  return labels[value];
-}
-
 function formatDate(value: string | null) {
   if (!value) return "—";
   const date = new Date(`${value.slice(0, 10)}T12:00:00`);
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
-}
-
-/** Sinaliza apenas o que pode ser observado nos registros atuais. */
-function judge(member: TeamMemberProfile) {
-  const { assignedTasks, completedTasks, completionRate, roi } = member.metrics;
-  if (assignedTasks === 0) return { tone: "blue", text: "AGUARDANDO · Sem tarefas" };
-  if (completionRate < 100) return { tone: "amber", text: `${assignedTasks - completedTasks} tarefa(s) em aberto` };
-  if (member.type === "AI") return { tone: "green", text: "Tarefas concluídas" };
-  if (roi === null) return { tone: "blue", text: "Custo mensal não informado" };
-  if (roi >= 200) return { tone: "green", text: "ROI acima de 200%" };
-  if (roi >= 100) return { tone: "green", text: "ROI acima de 100%" };
-  return { tone: "blue", text: "Tarefas concluídas" };
 }
 
 function SummaryCard({

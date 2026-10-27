@@ -46,6 +46,8 @@ type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
 function localDateTimeValue() {
   const date = new Date();
+  date.setHours(date.getHours() + 1);
+  date.setSeconds(0, 0);
   date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
   return date.toISOString().slice(0, 16);
 }
@@ -67,7 +69,7 @@ function meetingDay(date: string) {
 }
 
 export default function ReunioesPage() {
-  const { data, loading, error } = useResource<Payload>("/api/meetings");
+  const { data, loading, error, setData } = useResource<Payload>("/api/meetings");
   const [activeTab, setActiveTab] = useState<MeetingTab>("schedule");
   const [scheduleView, setScheduleView] = useState<ScheduleView>("upcoming");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -128,10 +130,17 @@ export default function ReunioesPage() {
         }),
       });
       notify("Reunião agendada.", "success");
+      setData((current) => current ? {
+        ...current,
+        meetings: [result.meeting, ...current.meetings.filter((meeting) => meeting.id !== result.meeting.id)]
+          .sort((left, right) => right.date.localeCompare(left.date)),
+        openActionItems: current.openActionItems + result.meeting.actionItems.filter((item) => !item.done).length,
+      } : current);
       setNewMeeting(emptyMeetingForm());
       setFormOpen(false);
       setSelectedId(result.meeting.id);
-      setActiveTab("room");
+      setScheduleView(new Date(result.meeting.date).getTime() >= Date.now() ? "upcoming" : "past");
+      setActiveTab("schedule");
     } catch (cause) {
       notify(cause instanceof Error ? cause.message : "Erro ao agendar reunião.", "error");
     } finally {
@@ -303,11 +312,11 @@ export default function ReunioesPage() {
           <div className="meeting-stats">
             <article className="card meeting-stat-card">
               <span className="meeting-stat-icon is-blue"><CalendarDays size={18} /></span>
-              <div><small>Próximas reuniões</small><strong>{upcomingMeetings.length}</strong></div>
+              <div><small>Reuniões registradas</small><strong>{meetings.length}</strong></div>
             </article>
             <article className="card meeting-stat-card">
               <span className="meeting-stat-icon is-purple"><Users size={18} /></span>
-              <div><small>Participantes agendados</small><strong>{upcomingMeetings.reduce((total, meeting) => total + meeting.participants.length, 0)}</strong></div>
+              <div><small>Participantes registrados</small><strong>{meetings.reduce((total, meeting) => total + meeting.participants.length, 0)}</strong></div>
             </article>
             <article className="card meeting-stat-card">
               <span className="meeting-stat-icon is-green"><Check size={18} /></span>
