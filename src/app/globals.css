@@ -9316,7 +9316,25 @@ textarea:focus {
 }
 .financial-transactions-filters > .app-select { min-width: 148px; }
 .financial-transactions-search { flex: 1 1 190px; max-width: 240px; }
-.financial-transactions-table { min-width: 980px; }
+.financial-transactions-table {
+  width: 100%;
+  min-width: 680px;
+  table-layout: fixed;
+}
+.financial-transactions-table th:nth-child(1),
+.financial-transactions-table td:nth-child(1) { width: 28%; }
+.financial-transactions-table th:nth-child(2),
+.financial-transactions-table td:nth-child(2) { width: 13%; }
+.financial-transactions-table th:nth-child(3),
+.financial-transactions-table td:nth-child(3) { width: 9%; }
+.financial-transactions-table th:nth-child(4),
+.financial-transactions-table td:nth-child(4) { width: 13%; }
+.financial-transactions-table th:nth-child(5),
+.financial-transactions-table td:nth-child(5) { width: 13%; }
+.financial-transactions-table th:nth-child(6),
+.financial-transactions-table td:nth-child(6) { width: 15%; }
+.financial-transactions-table th:nth-child(7),
+.financial-transactions-table td:nth-child(7) { width: 9%; }
 .financial-transaction-counterparty,
 .financial-transaction-cost-kind { margin-top: 4px; }
 .financial-transaction-source { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
@@ -9324,11 +9342,14 @@ textarea:focus {
 .financial-transaction-expense { color: #d94350; }
 .financial-transactions-empty { margin-top: 16px; }
 
-@media (max-width: 760px) {
-  .financial-transactions-head { align-items: flex-start; }
+@media (max-width: 1024px) {
   .financial-transactions-toolbar { align-items: flex-start; flex-direction: column; }
   .financial-transactions-filters { justify-content: flex-start; flex-basis: auto; width: 100%; }
   .financial-transactions-search { max-width: none; }
+}
+
+@media (max-width: 760px) {
+  .financial-transactions-head { align-items: flex-start; }
   .financial-transactions-card { padding: 18px; }
 }
 
