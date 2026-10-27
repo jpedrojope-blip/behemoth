@@ -603,7 +603,7 @@ function FinancialExecutiveReport({
 }
 
 function detailsHeading(params: Params) {
-  if (params.type === "report") return "Relatório financeiro";
+  if (params.type === "report") return params.detailReport === "DFC" ? "Relatório de fluxo de caixa" : "Relatório financeiro";
   if (params.type === "dre-stage") return DRE_STAGE_LABELS[params.stage] ?? "Detalhes da DRE";
   if (params.type === "chart-point") return `${METRIC_LABELS[params.metric] ?? "Desempenho"} · ${shortDate(params.date ?? "")}`;
   if (params.type === "expense-category" || params.type === "dre-category") return params.category === "__outros__" ? "Outras categorias" : categoryLabel(params.category ?? "Categoria");
@@ -612,7 +612,9 @@ function detailsHeading(params: Params) {
 }
 
 function detailsDescription(params: Params, report: DetailReport) {
-  if (params.type === "report") return "Gráficos e cálculos do período, com os lançamentos que formam cada resultado.";
+  if (params.type === "report") return report === "DFC"
+    ? "Gráficos, cálculos e lançamentos confirmados considerados no regime de caixa."
+    : "Gráficos e cálculos do período, com os lançamentos que formam cada resultado.";
   if (params.type === "dre-stage") return `Lançamentos confirmados que entram em ${DRE_STAGE_LABELS[params.stage] ?? "esta etapa"}.`;
   if (params.type === "chart-point") return `Veja o que formou ${METRIC_LABELS[params.metric]?.toLowerCase() ?? "o resultado"} neste dia.`;
   if (params.type === "expense-category" || params.type === "dre-category") return params.category === "__outros__"

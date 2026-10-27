@@ -1311,6 +1311,9 @@ export default function FinanceiroPage() {
               </ul>
             ) : <p className="dre-breakdown-empty">Nenhuma saída confirmada para a DFC neste período.</p>)}
           </div>
+          <button className="finance-inline-link" type="button" onClick={() => openFinancialDetails({ type: "report", report: "DFC", detailReport: "DFC" })}>
+            Ver relatório detalhado da DFC <span aria-hidden="true">→</span>
+          </button>
           <button className="finance-inline-link" type="button" onClick={() => openFinancialDetails({ type: "cashflow", report: "DFC", detailReport: "DFC" })}>
             Ver lançamentos do fluxo de caixa <span aria-hidden="true">→</span>
           </button>
