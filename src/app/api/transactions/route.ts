@@ -40,6 +40,7 @@ export async function GET(request: Request) {
     : currentDreMonth;
   const category = url.searchParams.get("category");
   const kind = url.searchParams.get("kind");
+  const allTransactions = url.searchParams.get("all") === "true";
   const detailMonth = url.searchParams.get("detailMonth");
   const requestedDetailReport = url.searchParams.get("detailReport");
   const detailReport = requestedDetailReport === "DRE" || requestedDetailReport === "DFC" || requestedDetailReport === "ANY"
@@ -48,11 +49,13 @@ export async function GET(request: Request) {
 
   return withWorkspaceDatabase(request, (db) => {
     const reference = new Date();
-    const listed = detailReport
-      ? detailMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(detailMonth)
-        ? filterByMonth(db.transactions, detailMonth, detailReport)
-        : filterByPeriod(db.transactions, period, reference, detailReport)
-      : filterByPeriod(db.transactions, period, reference, "ANY");
+    const listed = allTransactions
+      ? db.transactions
+      : detailReport
+        ? detailMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(detailMonth)
+          ? filterByMonth(db.transactions, detailMonth, detailReport)
+          : filterByPeriod(db.transactions, period, reference, detailReport)
+        : filterByPeriod(db.transactions, period, reference, "ANY");
     const dreScoped = filterByPeriod(db.transactions, period, reference, "DRE");
     const selectedDreScoped = filterByMonth(db.transactions, dreMonth, "DRE");
     const cashScoped = filterByPeriod(db.transactions, period, reference, "DFC");

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AppSelect } from "@/components/ui/app-select";
 import {
@@ -15,12 +16,9 @@ import {
   Upload,
   Plus,
   Receipt,
-  Repeat,
   SlidersHorizontal,
   TrendingUp,
-  Trash2,
   X,
-  Zap,
 } from "lucide-react";
 import { Donut } from "@/components/ui/donut";
 import { FinancialPerformanceChart } from "@/components/ui/financial-performance-chart";
@@ -87,14 +85,13 @@ async function importChunkIds(file: File, chunkCount: number) {
   }));
 }
 
-type FinanceSectionId = "summary" | "charts" | "dre" | "cashflow" | "transactions";
+type FinanceSectionId = "summary" | "charts" | "dre" | "cashflow";
 
 const FINANCE_SECTIONS: Array<{ id: FinanceSectionId; label: string }> = [
   { id: "summary", label: "Indicadores principais" },
   { id: "charts", label: "Gráficos do período" },
   { id: "dre", label: "DRE e indicadores" },
   { id: "cashflow", label: "Fluxo de caixa e metas" },
-  { id: "transactions", label: "Lançamentos" },
 ];
 
 const DEFAULT_FINANCE_SECTIONS = FINANCE_SECTIONS.map(({ id }) => id);
@@ -309,9 +306,6 @@ export default function FinanceiroPage() {
   const [expenseDetailsOpen, setExpenseDetailsOpen] = useState(false);
   const [cashExpenseDetailsOpen, setCashExpenseDetailsOpen] = useState(false);
   const [dreItemsExpanded, setDreItemsExpanded] = useState(false);
-  const [transactionsExpanded, setTransactionsExpanded] = useState(false);
-  const [kind, setKind] = useState("todos");
-  const [category, setCategory] = useState("todas");
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -356,7 +350,7 @@ export default function FinanceiroPage() {
   }
 
   const { data, loading, error } = useResource<Payload>(
-    `/api/transactions?period=${period}&chartMonth=${chartMonth}&dreMonth=${dreMonth}&kind=${kind}&category=${encodeURIComponent(category)}`,
+    `/api/transactions?period=${period}&chartMonth=${chartMonth}&dreMonth=${dreMonth}`,
   );
   useAutoRevalidate();
 
@@ -369,6 +363,7 @@ export default function FinanceiroPage() {
   useEffect(() => {
     if (new URLSearchParams(window.location.search).has("novo")) setFormOpen(true);
     const params = new URLSearchParams(window.location.search);
+    if (params.has("importar")) setActiveTab("pdf");
     const requestedPeriod = params.get("period");
     const requestedChartMonth = params.get("chartMonth");
     const requestedDreMonth = params.get("dreMonth");
@@ -376,10 +371,6 @@ export default function FinanceiroPage() {
     if (requestedChartMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedChartMonth)) setChartMonth(requestedChartMonth);
     if (requestedDreMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedDreMonth)) setDreMonth(requestedDreMonth);
   }, []);
-
-  useEffect(() => {
-    setTransactionsExpanded(false);
-  }, [period, kind, category]);
 
   useEffect(() => {
     setDreItemsExpanded(false);
@@ -560,8 +551,6 @@ export default function FinanceiroPage() {
       : []),
   ];
   const cashExpenseCategories = data?.cashExpensesByCategory ?? [];
-  const allTransactions = data?.transactions ?? [];
-  const visibleTransactions = transactionsExpanded ? allTransactions : allTransactions.slice(0, 5);
   const revenue = financials?.grossRevenue ?? 0;
   const costs = financials?.costs ?? 0;
   const margin = (financials?.netMargin ?? 0) * 100;
@@ -695,13 +684,144 @@ export default function FinanceiroPage() {
       {error && <p className="form-error">{error}</p>}
 
       <div className="tabs" role="group" aria-label="Área financeira">
-        <button className={`tab ${activeTab === "report" ? "active" : ""}`} onClick={() => setActiveTab("report")} aria-pressed={activeTab === "report"}>
-          Visão geral
-        </button>
+        <Link className="tab" href="/financeiro/lancamentos">
+          <Receipt size={15} aria-hidden="true" /> Lançamentos
+        </Link>
         <button className={`tab ${activeTab === "pdf" ? "active" : ""}`} onClick={() => setActiveTab("pdf")} aria-haspopup="dialog" aria-expanded={activeTab === "pdf"}>
           <FileText size={15} /> Importar arquivo
         </button>
       </div>
+
+      {formOpen && (
+        <form className="inline-form finance-form" onSubmit={submit}>
+          <div className="form-grid">
+            <div className="field">
+              <label htmlFor="description">Descrição</label>
+              <input
+                id="description"
+                value={form.description}
+                onChange={(event) => setForm({ ...form, description: event.target.value })}
+                placeholder="Cliente ABC"
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="counterparty">Cliente / favorecido</label>
+              <input
+                id="counterparty"
+                value={form.counterparty}
+                onChange={(event) => setForm({ ...form, counterparty: event.target.value })}
+                placeholder="Ex.: cliente ou fornecedor"
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="amount">Valor (R$)</label>
+              <input
+                id="amount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={form.amount}
+                onChange={(event) => setForm({ ...form, amount: event.target.value })}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="kind">Tipo</label>
+              <AppSelect
+                id="kind"
+                value={form.kind}
+                onChange={(event) => setForm({ ...form, kind: event.target.value as Transaction["kind"] })}
+              >
+                <option value="INCOME">Receita</option>
+                <option value="EXPENSE">Despesa</option>
+              </AppSelect>
+            </div>
+            <div className="field">
+              <label htmlFor="category">Categoria</label>
+              <input
+                id="category"
+                list="categorias"
+                value={form.category}
+                onChange={(event) => setForm({ ...form, category: event.target.value })}
+                placeholder={form.kind === "INCOME" ? "Receita" : "Marketing"}
+              />
+              <datalist id="categorias">
+                {(data?.categories ?? []).map((item) => <option key={item} value={item} />)}
+              </datalist>
+            </div>
+            <div className="field">
+              <label htmlFor="date">{form.financialReport === "DFC" ? "Data do caixa" : "Data de competência"}</label>
+              <input
+                id="date"
+                type="date"
+                value={form.date}
+                onChange={(event) => setForm({ ...form, date: event.target.value })}
+              />
+            </div>
+            <div className="field" hidden={form.financialReport !== "BOTH"}>
+              <label htmlFor="cashDate">Data de liquidação</label>
+              <input
+                id="cashDate"
+                type="date"
+                required={form.financialReport === "BOTH"}
+                value={form.cashDate}
+                onChange={(event) => setForm({ ...form, cashDate: event.target.value })}
+              />
+              <p className="small muted">Só inclua no fluxo de caixa quando souber a data em que o valor foi liquidado.</p>
+            </div>
+            <div className="field">
+              <label htmlFor="financialReport">Entra em</label>
+              <AppSelect
+                id="financialReport"
+                value={form.financialReport}
+                onChange={(event) => setForm({ ...form, financialReport: event.target.value as NonNullable<Transaction["financialReport"]> })}
+              >
+                <option value="BOTH">DRE e caixa (com liquidação)</option>
+                <option value="DRE">Somente DRE</option>
+                <option value="DFC">Somente fluxo de caixa</option>
+              </AppSelect>
+            </div>
+            <div className="field" hidden={form.kind !== "EXPENSE"}>
+              <label htmlFor="costBehavior">Tipo de gasto</label>
+              <AppSelect
+                id="costBehavior"
+                value={form.costBehavior}
+                onChange={(event) => setForm({ ...form, costBehavior: event.target.value as NonNullable<Transaction["costBehavior"]> })}
+              >
+                <option value="AUTO">Automático pela categoria</option>
+                <option value="FIXED">Gasto fixo</option>
+                <option value="VARIABLE">Gasto variável</option>
+              </AppSelect>
+            </div>
+            <div className="field">
+              <label htmlFor="status">Situação</label>
+              <AppSelect
+                id="status"
+                value={form.status}
+                onChange={(event) => setForm({ ...form, status: event.target.value as Transaction["status"] })}
+              >
+                <option value="CONFIRMED">Confirmado</option>
+                <option value="PENDING">Pendente</option>
+              </AppSelect>
+            </div>
+            <div className="field">
+              <label htmlFor="recurrence">Repetição</label>
+              <AppSelect
+                id="recurrence"
+                value={form.recurrence}
+                onChange={(event) => setForm({ ...form, recurrence: event.target.value as NonNullable<Transaction["recurrence"]> })}
+              >
+                <option value="NONE">Único</option>
+                <option value="MONTHLY">Todo mês</option>
+              </AppSelect>
+            </div>
+            <button className="btn btn-primary" type="submit" disabled={saving}>
+              {saving ? "Salvando..." : "Salvar lançamento"}
+            </button>
+          </div>
+        </form>
+      )}
 
       <dialog
         ref={importDialogRef}
@@ -1338,250 +1458,7 @@ export default function FinanceiroPage() {
         </div>
       </section>
 
-      <section className="section card" hidden={!visibleSections.has("transactions")}>
-        <div className="section-head">
-          <h2>Lançamentos</h2>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <AppSelect className="btn btn-ghost" value={kind} onChange={(event) => setKind(event.target.value)}>
-              <option value="todos">Todos os tipos</option>
-              <option value="INCOME">Receitas</option>
-              <option value="EXPENSE">Despesas</option>
-            </AppSelect>
-            <AppSelect className="btn btn-ghost" value={category} onChange={(event) => setCategory(event.target.value)}>
-              <option value="todas">Todas as categorias</option>
-              {(data?.categories ?? []).map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </AppSelect>
-          </div>
-        </div>
 
-        {formOpen && (
-          <form className="inline-form finance-form" onSubmit={submit}>
-            <div className="form-grid">
-              <div className="field">
-                <label htmlFor="description">Descrição</label>
-                <input
-                  id="description"
-                  value={form.description}
-                  onChange={(event) => setForm({ ...form, description: event.target.value })}
-                  placeholder="Cliente ABC"
-                  required
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="counterparty">Cliente / favorecido</label>
-                <input
-                  id="counterparty"
-                  value={form.counterparty}
-                  onChange={(event) => setForm({ ...form, counterparty: event.target.value })}
-                  placeholder="Ex.: cliente ou fornecedor"
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="amount">Valor (R$)</label>
-                <input
-                  id="amount"
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={form.amount}
-                  onChange={(event) => setForm({ ...form, amount: event.target.value })}
-                  required
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="kind">Tipo</label>
-                <AppSelect
-                  id="kind"
-                  value={form.kind}
-                  onChange={(event) => setForm({ ...form, kind: event.target.value as Transaction["kind"] })}
-                >
-                  <option value="INCOME">Receita</option>
-                  <option value="EXPENSE">Despesa</option>
-                </AppSelect>
-              </div>
-              <div className="field">
-                <label htmlFor="category">Categoria</label>
-                <input
-                  id="category"
-                  list="categorias"
-                  value={form.category}
-                  onChange={(event) => setForm({ ...form, category: event.target.value })}
-                  placeholder={form.kind === "INCOME" ? "Receita" : "Marketing"}
-                />
-                <datalist id="categorias">
-                  {(data?.categories ?? []).map((item) => (
-                    <option key={item} value={item} />
-                  ))}
-                </datalist>
-              </div>
-              <div className="field">
-                <label htmlFor="date">{form.financialReport === "DFC" ? "Data do caixa" : "Data de competência"}</label>
-                <input
-                  id="date"
-                  type="date"
-                  value={form.date}
-                  onChange={(event) => setForm({ ...form, date: event.target.value })}
-                />
-              </div>
-              <div className="field" hidden={form.financialReport !== "BOTH"}>
-                  <label htmlFor="cashDate">Data de liquidação</label>
-                <input
-                  id="cashDate"
-                  type="date"
-                    required={form.financialReport === "BOTH"}
-                  value={form.cashDate}
-                  onChange={(event) => setForm({ ...form, cashDate: event.target.value })}
-                />
-                <p className="small muted">Só inclua no fluxo de caixa quando souber a data em que o valor foi liquidado.</p>
-              </div>
-              <div className="field">
-                <label htmlFor="financialReport">Entra em</label>
-                <AppSelect
-                  id="financialReport"
-                  value={form.financialReport}
-                  onChange={(event) => setForm({ ...form, financialReport: event.target.value as NonNullable<Transaction["financialReport"]> })}
-                >
-                  <option value="BOTH">DRE e caixa (com liquidação)</option>
-                  <option value="DRE">Somente DRE</option>
-                  <option value="DFC">Somente fluxo de caixa</option>
-                </AppSelect>
-              </div>
-              <div className="field" hidden={form.kind !== "EXPENSE"}>
-                <label htmlFor="costBehavior">Tipo de gasto</label>
-                <AppSelect
-                  id="costBehavior"
-                  value={form.costBehavior}
-                  onChange={(event) => setForm({ ...form, costBehavior: event.target.value as NonNullable<Transaction["costBehavior"]> })}
-                >
-                  <option value="AUTO">Automático pela categoria</option>
-                  <option value="FIXED">Gasto fixo</option>
-                  <option value="VARIABLE">Gasto variável</option>
-                </AppSelect>
-              </div>
-              <div className="field">
-                <label htmlFor="status">Situação</label>
-                <AppSelect
-                  id="status"
-                  value={form.status}
-                  onChange={(event) => setForm({ ...form, status: event.target.value as Transaction["status"] })}
-                >
-                  <option value="CONFIRMED">Confirmado</option>
-                  <option value="PENDING">Pendente</option>
-                </AppSelect>
-              </div>
-              <div className="field">
-                <label htmlFor="recurrence">Repetição</label>
-                <AppSelect
-                  id="recurrence"
-                  value={form.recurrence}
-                  onChange={(event) =>
-                    setForm({ ...form, recurrence: event.target.value as NonNullable<Transaction["recurrence"]> })
-                  }
-                >
-                  <option value="NONE">Único</option>
-                  <option value="MONTHLY">Todo mês</option>
-                </AppSelect>
-              </div>
-              <button className="btn btn-primary" type="submit" disabled={saving}>
-                {saving ? "Salvando..." : "Salvar lançamento"}
-              </button>
-            </div>
-          </form>
-        )}
-
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>DESCRIÇÃO</th>
-                <th>CATEGORIA</th>
-                <th>DATA</th>
-                <th>SITUAÇÃO</th>
-                <th className="num">VALOR</th>
-                <th className="actions">AÇÕES</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleTransactions.map((transaction) => (
-                <tr key={transaction.id}>
-                  <td>
-                    <strong>{transaction.description}</strong>
-                    <div className="small muted" style={{ marginTop: 4 }}>
-                      {transaction.counterparty ? `Para: ${transaction.counterparty}` : "Favorecido não informado"}
-                    </div>
-                    <div className="small muted" style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-                      {transaction.source ?? "manual"}
-                      {transaction.auto && (
-                        <span className="pill purple" title="Gerado por automação">
-                          <Zap size={10} /> auto
-                        </span>
-                      )}
-                      {transaction.recurrence === "MONTHLY" && !transaction.originId && (
-                        <span className="pill blue" title="Repete todo mês">
-                          <Repeat size={10} /> mensal
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td>
-                    {transaction.category}
-                    <div className="small muted" style={{ marginTop: 4 }}>
-                      {transaction.financialReport === "DRE" ? "Somente DRE" : transaction.financialReport === "DFC" ? "Somente caixa" : "DRE e caixa"}
-                      {transaction.kind === "EXPENSE" && ` · ${transaction.costBehavior === "FIXED" ? "Fixo" : transaction.costBehavior === "VARIABLE" ? "Variável" : "Tipo automático"}`}
-                    </div>
-                  </td>
-                  <td>
-                    {shortDate(transaction.financialReport === "DFC" ? transaction.cashDate ?? transaction.date : transaction.competenceDate ?? transaction.date)}
-                    {transaction.financialReport !== "DFC" && transaction.cashDate && transaction.cashDate !== (transaction.competenceDate ?? transaction.date) && (
-                      <div className="small muted" style={{ marginTop: 4 }}>Caixa: {shortDate(transaction.cashDate)}</div>
-                    )}
-                  </td>
-                  <td>
-                    {transaction.auto && (transaction.id.startsWith("auto_salary_") || transaction.id.startsWith("auto_agent_cost_")) ? (
-                      <span className={`pill ${transaction.status === "CONFIRMED" ? "green" : "amber"}`} title="Atualize este valor no perfil do integrante.">
-                        {transaction.status === "CONFIRMED" ? <Check size={12} /> : null}
-                        {transaction.status === "CONFIRMED" ? "Confirmado" : "Pendente"}
-                      </span>
-                    ) : (
-                      <button
-                        className={`pill ${transaction.status === "CONFIRMED" ? "green" : "amber"}`}
-                        onClick={() => toggleStatus(transaction)}
-                        title="Alternar situação"
-                      >
-                        {transaction.status === "CONFIRMED" ? <Check size={12} /> : null}
-                        {transaction.status === "CONFIRMED" ? "Confirmado" : "Pendente"}
-                      </button>
-                    )}
-                  </td>
-                  <td className="num" style={{ color: transaction.kind === "INCOME" ? "#4ade80" : "#ff8f7a" }}>
-                    {transaction.kind === "INCOME" ? "+" : "−"} {brlExact(transaction.amount)}
-                  </td>
-                  <td className="actions">
-                    <button className="icon-action danger" onClick={() => remove(transaction)} title="Excluir">
-                      <Trash2 size={15} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {allTransactions.length > 5 && (
-          <button className="finance-show-more transaction-show-more" type="button" onClick={() => setTransactionsExpanded((expanded) => !expanded)}>
-            {transactionsExpanded ? "Mostrar apenas os 5 primeiros" : `Mostrar os ${allTransactions.length} lançamentos`}
-            <ChevronDown className={transactionsExpanded ? "is-open" : ""} size={15} aria-hidden="true" />
-          </button>
-        )}
-        {!loading && !data?.transactions.length && (
-          <p className="empty" style={{ marginTop: 16 }}>
-            Nenhum lançamento neste filtro. Cadastre o primeiro para ver os números reais.
-          </p>
-        )}
-      </section>
     </div>
   );
 }
