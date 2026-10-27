@@ -9318,23 +9318,24 @@ textarea:focus {
 .financial-transactions-search { flex: 1 1 190px; max-width: 240px; }
 .financial-transactions-table {
   width: 100%;
-  min-width: 680px;
+  min-width: 698px;
   table-layout: fixed;
 }
 .financial-transactions-table th:nth-child(1),
-.financial-transactions-table td:nth-child(1) { width: 28%; }
+.financial-transactions-table td:nth-child(1) { width: 26%; }
 .financial-transactions-table th:nth-child(2),
-.financial-transactions-table td:nth-child(2) { width: 13%; }
+.financial-transactions-table td:nth-child(2) { width: 12%; }
 .financial-transactions-table th:nth-child(3),
 .financial-transactions-table td:nth-child(3) { width: 9%; }
 .financial-transactions-table th:nth-child(4),
-.financial-transactions-table td:nth-child(4) { width: 13%; }
+.financial-transactions-table td:nth-child(4) { width: 12%; }
 .financial-transactions-table th:nth-child(5),
-.financial-transactions-table td:nth-child(5) { width: 13%; }
+.financial-transactions-table td:nth-child(5) { width: 17%; }
 .financial-transactions-table th:nth-child(6),
-.financial-transactions-table td:nth-child(6) { width: 15%; }
+.financial-transactions-table td:nth-child(6) { width: 16%; }
 .financial-transactions-table th:nth-child(7),
-.financial-transactions-table td:nth-child(7) { width: 9%; }
+.financial-transactions-table td:nth-child(7) { width: 8%; }
+.financial-transactions-table td:nth-child(6) { white-space: nowrap; }
 .financial-transaction-counterparty,
 .financial-transaction-cost-kind { margin-top: 4px; }
 .financial-transaction-source { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
@@ -9343,6 +9344,7 @@ textarea:focus {
 .financial-transactions-empty { margin-top: 16px; }
 
 @media (max-width: 1024px) {
+  .financial-transactions-card { padding: 18px; }
   .financial-transactions-toolbar { align-items: flex-start; flex-direction: column; }
   .financial-transactions-filters { justify-content: flex-start; flex-basis: auto; width: 100%; }
   .financial-transactions-search { max-width: none; }
@@ -9350,7 +9352,6 @@ textarea:focus {
 
 @media (max-width: 760px) {
   .financial-transactions-head { align-items: flex-start; }
-  .financial-transactions-card { padding: 18px; }
 }
 
 .financial-chart-head-actions {
