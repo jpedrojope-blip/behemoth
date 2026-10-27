@@ -27,7 +27,7 @@ import { FinancialPerformanceChart } from "@/components/ui/financial-performance
 import type { Transaction } from "@/lib/types";
 
 type Params = Record<string, string>;
-type DetailPayload = { transactions: Transaction[] };
+type DetailPayload = { transactions: Transaction[]; availableMonths: string[] };
 type DetailReport = "DRE" | "DFC" | "ANY";
 type ReportSnapshot = {
   income: number;
@@ -169,14 +169,6 @@ function ptPercent(value: number) {
 
 function ptPoints(value: number) {
   return `${Math.abs(value).toFixed(1).replace(".", ",")} p.p.`;
-}
-
-function monthsAround(month: string, radius = 12) {
-  const [year, monthNumber] = month.split("-").map(Number);
-  return Array.from({ length: radius * 2 + 1 }, (_, index) => {
-    const date = new Date(year, monthNumber - 1 + index - radius, 1);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-  });
 }
 
 type BridgeStep = {
@@ -633,7 +625,7 @@ function detailsDescription(params: Params, report: DetailReport) {
 export function FinanceDetailView({ params }: { params: Params }) {
   const router = useRouter();
   const querySignature = JSON.stringify(params);
-  const [detailResult, setDetailResult] = useState<{ signature: string; transactions: Transaction[]; previousTransactions: Transaction[] } | null>(null);
+  const [detailResult, setDetailResult] = useState<{ signature: string; transactions: Transaction[]; previousTransactions: Transaction[]; availableMonths: string[] } | null>(null);
   const [detailError, setDetailError] = useState<{ signature: string; message: string } | null>(null);
   const [showAllCategories, setShowAllCategories] = useState(false);
   const [showAllTransactions, setShowAllTransactions] = useState(false);
@@ -641,12 +633,8 @@ export function FinanceDetailView({ params }: { params: Params }) {
   const period: Period = isPeriod(params.period ?? null) ? params.period as Period : "mes";
   const report: DetailReport = params.detailReport === "DFC" || params.detailReport === "ANY" ? params.detailReport : "DRE";
   const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(params.detailMonth ?? "") ? params.detailMonth : undefined;
-  const monthOptions = [...new Set([
-    ...(params.months ?? "").split(",").filter((value) => /^\d{4}-(0[1-9]|1[0-2])$/.test(value)),
-    ...(month ? monthsAround(month) : []),
-  ])];
-  if (month && !monthOptions.includes(month)) monthOptions.push(month);
-  monthOptions.sort((left, right) => right.localeCompare(left));
+  const loadedMonths = detailResult?.signature === querySignature ? detailResult.availableMonths : null;
+  const monthOptions = loadedMonths ?? (month ? [month] : []);
   const backParams = new URLSearchParams({ period });
   if (params.chartMonth) backParams.set("chartMonth", params.chartMonth);
   if (params.dreMonth) backParams.set("dreMonth", params.dreMonth);
@@ -658,6 +646,14 @@ export function FinanceDetailView({ params }: { params: Params }) {
     nextParams.set("chartMonth", nextMonth);
     router.replace(`/financeiro/detalhes?${nextParams.toString()}`, { scroll: false });
   }
+
+  useEffect(() => {
+    if (!month || detailResult?.signature !== querySignature || !detailResult.availableMonths.length || detailResult.availableMonths.includes(month)) return;
+    const nextParams = new URLSearchParams(JSON.parse(querySignature) as Params);
+    nextParams.set("detailMonth", detailResult.availableMonths[0]);
+    nextParams.set("chartMonth", detailResult.availableMonths[0]);
+    router.replace(`/financeiro/detalhes?${nextParams.toString()}`, { scroll: false });
+  }, [detailResult, month, querySignature, router]);
 
   useEffect(() => {
     let active = true;
@@ -683,6 +679,7 @@ export function FinanceDetailView({ params }: { params: Params }) {
           signature: querySignature,
           transactions: payload.transactions,
           previousTransactions: previousPayload?.transactions ?? [],
+          availableMonths: payload.availableMonths ?? [],
         });
       })
       .catch((cause: unknown) => {
@@ -829,9 +826,13 @@ export function FinanceDetailView({ params }: { params: Params }) {
         <div className="financial-detail-period">
           <CalendarDays size={15} />
           {month ? (
-            <AppSelect aria-label="Mês do detalhamento" value={month} onChange={(event) => selectMonth(event.target.value)}>
-              {monthOptions.map((monthOption) => <option key={monthOption} value={monthOption}>{monthLabel(monthOption)}</option>)}
-            </AppSelect>
+            loadedMonths?.length === 0 ? (
+              <span className="financial-detail-period-empty">Sem meses com lançamentos</span>
+            ) : (
+              <AppSelect aria-label="Mês do detalhamento" value={month} onChange={(event) => selectMonth(event.target.value)}>
+                {monthOptions.map((monthOption) => <option key={monthOption} value={monthOption}>{monthLabel(monthOption)}</option>)}
+              </AppSelect>
+            )
           ) : (
             <AppSelect aria-label="Período dos detalhes" value={period} onChange={(event) => {
               const nextParams = new URLSearchParams(params);

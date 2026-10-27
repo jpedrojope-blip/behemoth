@@ -94,18 +94,23 @@ export function filterByMonth(transactions: Transaction[], month: string, report
   });
 }
 
-export function availableDreMonths(transactions: Transaction[], reference = new Date()) {
-  const currentMonth = `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}`;
-  const months = new Set<string>([currentMonth]);
-
+export function availableFinancialMonths(transactions: Transaction[], report: FinancialStatement = "DRE") {
+  const months = new Set<string>();
   for (const transaction of transactions) {
-    if (transaction.status !== "CONFIRMED" || !reportIncludes(transaction, "DRE")) continue;
-    const [date] = reportDates(transaction, "DRE");
-    const match = /^(\d{4})-(0[1-9]|1[0-2])/.exec(date ?? "");
-    if (match) months.add(`${match[1]}-${match[2]}`);
+    if (transaction.status !== "CONFIRMED" || !reportIncludes(transaction, report)) continue;
+    for (const date of reportDates(transaction, report)) {
+      const match = /^(\d{4})-(0[1-9]|1[0-2])/.exec(date ?? "");
+      if (match) months.add(`${match[1]}-${match[2]}`);
+    }
   }
 
   return [...months].sort((left, right) => right.localeCompare(left));
+}
+
+export function availableDreMonths(transactions: Transaction[], reference = new Date()) {
+  const currentMonth = `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}`;
+  return [...new Set([currentMonth, ...availableFinancialMonths(transactions, "DRE")])]
+    .sort((left, right) => right.localeCompare(left));
 }
 
 export function previousPeriod(

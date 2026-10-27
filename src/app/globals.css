@@ -9337,6 +9337,7 @@ textarea:focus {
 .financial-detail-head .page-title { margin: 0; color: #102a50; }
 .financial-detail-head .subtitle { margin-top: 5px; color: #526f98; }
 .financial-detail-period { position: relative; display: inline-flex; align-items: center; gap: 8px; padding: 4px 8px; border: 1px solid rgba(79, 126, 190, 0.2); border-radius: 10px; background: rgba(255, 255, 255, 0.76); color: #58749b; }
+.financial-detail-period-empty { padding: 8px 0; color: #18365f; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .financial-detail-period > .app-select { width: 138px; flex: 0 0 auto; }
 .financial-detail-page .financial-detail-period .app-select-trigger { min-height: 38px; gap: 8px; padding: 5px 0; border-color: transparent; border-radius: 0; color: #18365f; background: transparent; box-shadow: none; font: 600 12px var(--font-sans), sans-serif; }
 .financial-detail-page .financial-detail-period .app-select-trigger:hover:not(:disabled),
@@ -10129,6 +10130,7 @@ textarea:focus {
   background: rgba(23, 43, 73, 0.78);
 }
 :root[data-theme="dark"] .financial-detail-page .financial-detail-period .app-select-trigger { color: var(--ink); }
+:root[data-theme="dark"] .financial-detail-page .financial-detail-period-empty { color: var(--ink); }
 :root[data-theme="dark"] .financial-detail-page .financial-detail-head .page-title,
 :root[data-theme="dark"] .financial-detail-page .financial-detail-executive-head h2,
 :root[data-theme="dark"] .financial-detail-page .financial-detail-panel-head h2,
