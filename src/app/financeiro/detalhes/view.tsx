@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowUpRight, CalendarDays, ChevronDown, ChevronUp, ReceiptText } from "lucide-react";
 import { apiFetch } from "@/lib/client";
+import { AppSelect } from "@/components/ui/app-select";
 import {
   PERIOD_LABELS,
   calculateCashFlow,
@@ -828,17 +829,17 @@ export function FinanceDetailView({ params }: { params: Params }) {
         <div className="financial-detail-period">
           <CalendarDays size={15} />
           {month ? (
-            <select aria-label="Mês do detalhamento" value={month} onChange={(event) => selectMonth(event.target.value)}>
+            <AppSelect aria-label="Mês do detalhamento" value={month} onChange={(event) => selectMonth(event.target.value)}>
               {monthOptions.map((monthOption) => <option key={monthOption} value={monthOption}>{monthLabel(monthOption)}</option>)}
-            </select>
+            </AppSelect>
           ) : (
-            <select aria-label="Período dos detalhes" value={period} onChange={(event) => {
+            <AppSelect aria-label="Período dos detalhes" value={period} onChange={(event) => {
               const nextParams = new URLSearchParams(params);
               nextParams.set("period", event.target.value);
               window.location.href = `/financeiro/detalhes?${nextParams.toString()}`;
             }}>
               {Object.entries(PERIOD_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
+            </AppSelect>
           )}
         </div>
       </header>
