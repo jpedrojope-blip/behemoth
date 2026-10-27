@@ -23,7 +23,7 @@ export type Company = {
 export type Automations = {
   /** Replica lançamentos marcados como mensais nos meses seguintes. */
   recurringTransactions: boolean;
-  /** Gera uma estimativa pendente do custo da equipe para confirmação no financeiro. */
+  /** Registra salários da equipe e custos de agentes como despesas mensais no financeiro. */
   teamCostToExpenses: boolean;
   /** Cria uma tarefa no calendário para cada item de ação com prazo. */
   actionItemsToCalendar: boolean;
@@ -62,7 +62,7 @@ export type Transaction = {
   costBehavior?: CostBehavior;
   /** Id do lançamento que originou esta cópia recorrente. */
   originId?: string;
-  /** Marca lançamentos criados por automação. Estimativas de equipe permitem confirmação manual. */
+  /** Marca lançamentos criados por automação e sincronizados com a origem correspondente. */
   auto?: boolean;
 };
 
@@ -84,7 +84,7 @@ export type TeamMember = {
   skills?: string[];
   type: "HUMAN" | "AI";
   role: string;
-  /** Custo mensal estimado informado para cada integrante. */
+  /** Custo mensal cadastrado para cada integrante. */
   monthlyCost: number;
   agentProvider?: string;
   agentModel?: string;

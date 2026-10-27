@@ -13,8 +13,7 @@ export function runAutomations(db: Database, reference = new Date()): string[] {
   const rules = db.automations ?? DEFAULT_AUTOMATIONS;
 
   if (rules.recurringTransactions) applied.push(...expandRecurring(db, reference));
-  applied.push(...resetUnconfirmedTeamCostEstimates(db));
-  if (rules.teamCostToExpenses) applied.push(...syncTeamCost(db, reference));
+  if (rules.teamCostToExpenses) applied.push(...syncTeamCosts(db, reference));
   if (rules.actionItemsToCalendar) applied.push(...syncActionItems(db));
   if (rules.meetingsToCalendar) applied.push(...syncMeetings(db));
   if (rules.paymentsToExpenses) applied.push(...syncPayments(db));
@@ -29,26 +28,6 @@ function monthKey(date: Date) {
 
 function dismissed(db: Database, id: string) {
   return db.dismissed.includes(id);
-}
-
-/** Older versions confirmed team-cost estimates automatically; keep them out of actual results until reviewed. */
-function resetUnconfirmedTeamCostEstimates(db: Database): string[] {
-  const updated: string[] = [];
-  for (const transaction of db.transactions) {
-    if (!transaction.id.startsWith("auto_team_") || !transaction.auto) continue;
-    const needsReview = transaction.status !== "PENDING"
-      || transaction.financialReport !== "DRE"
-      || transaction.description !== "Estimativa de custo da equipe e agentes"
-      || Boolean(transaction.cashDate || transaction.cashDateConfirmed);
-    if (!needsReview) continue;
-    transaction.status = "PENDING";
-    transaction.description = "Estimativa de custo da equipe e agentes";
-    transaction.financialReport = "DRE";
-    transaction.cashDate = undefined;
-    transaction.cashDateConfirmed = undefined;
-    updated.push(transaction.id);
-  }
-  return updated;
 }
 
 /** Lançamentos mensais recorrentes: materializa as ocorrências até o mês atual. */
@@ -94,50 +73,74 @@ function expandRecurring(db: Database, reference: Date): string[] {
   return applied;
 }
 
-/** Custo informado pela equipe fica como estimativa até alguém confirmar o valor realizado. */
-function syncTeamCost(db: Database, reference: Date): string[] {
+/** Cada salário vira uma despesa de RH rastreável; custos de agentes ficam separados em Equipe. */
+function syncTeamCosts(db: Database, reference: Date): string[] {
   const key = monthKey(reference);
-  const id = `auto_team_${key}`;
-  if (dismissed(db, id)) return [];
-
-  const total = db.team
-    .filter((member) => member.status === "ACTIVE")
-    .reduce((sum, member) => sum + member.monthlyCost, 0);
-  const index = db.transactions.findIndex((transaction) => transaction.id === id);
-
-  if (index >= 0 && !db.transactions[index].auto) return [];
-
-  if (total <= 0) {
-    if (index >= 0) db.transactions.splice(index, 1);
-    return [];
-  }
-
   const lastDay = new Date(reference.getFullYear(), reference.getMonth() + 1, 0).getDate();
-  const entry: Transaction = {
-    id,
-    companyId: db.company.id,
-    kind: "EXPENSE",
-    date: `${key}-${String(Math.min(reference.getDate(), lastDay)).padStart(2, "0")}`,
-    description: "Estimativa de custo da equipe e agentes",
-    category: "Equipe",
-    amount: total,
-    source: "automação",
-    status: "PENDING",
-    financialReport: "DRE",
-    cashDate: undefined,
-    cashDateConfirmed: undefined,
-    auto: true,
-  };
+  const date = `${key}-${String(Math.min(reference.getDate(), lastDay)).padStart(2, "0")}`;
+  const members = db.team.filter((member) => member.status === "ACTIVE" && member.monthlyCost > 0);
+  const desiredIds = new Set<string>();
+  const changed: string[] = [];
 
-  if (index >= 0) {
+  for (const member of members) {
+    const isHuman = member.type === "HUMAN";
+    const id = `${isHuman ? "auto_salary" : "auto_agent_cost"}_${member.id}_${key}`;
+    desiredIds.add(id);
+    if (dismissed(db, id)) continue;
+
+    const entry: Transaction = {
+      id,
+      companyId: db.company.id,
+      kind: "EXPENSE",
+      date,
+      description: isHuman ? `Salário mensal — ${member.name}` : `Custo mensal do agente — ${member.name}`,
+      counterparty: member.name,
+      category: isHuman ? "RH" : "Equipe",
+      amount: member.monthlyCost,
+      source: "automação",
+      status: "CONFIRMED",
+      financialReport: "DRE",
+      auto: true,
+    };
+    const index = db.transactions.findIndex((transaction) => transaction.id === id);
+    if (index < 0) {
+      db.transactions.push(entry);
+      changed.push(id);
+      continue;
+    }
+
     const existing = db.transactions[index];
-    if (existing.amount === total && existing.status === "PENDING" && existing.description === entry.description) return [];
+    if (!existing.auto) continue;
+    if (
+      existing.amount === entry.amount &&
+      existing.status === entry.status &&
+      existing.category === entry.category &&
+      existing.description === entry.description &&
+      existing.counterparty === entry.counterparty &&
+      existing.date === entry.date &&
+      existing.financialReport === entry.financialReport
+    ) continue;
     db.transactions[index] = { ...existing, ...entry };
-    return [id];
+    changed.push(id);
   }
 
-  db.transactions.push(entry);
-  return [id];
+  // Remove payroll entries for members no longer active and update legacy aggregate costs.
+  for (let index = db.transactions.length - 1; index >= 0; index -= 1) {
+    const transaction = db.transactions[index];
+    const isCurrentPeriodEntry = transaction.id.endsWith(`_${key}`);
+    const isGeneratedMemberCost = (transaction.id.startsWith("auto_salary_") || transaction.id.startsWith("auto_agent_cost_"))
+      && isCurrentPeriodEntry && transaction.auto && !desiredIds.has(transaction.id);
+    const isLegacyAggregate = transaction.id === `auto_team_${key}` && (
+      transaction.auto ||
+      transaction.description === "Estimativa de custo da equipe e agentes" ||
+      transaction.description === "Custo confirmado da equipe e agentes"
+    );
+    if (!isGeneratedMemberCost && !isLegacyAggregate) continue;
+    db.transactions.splice(index, 1);
+    changed.push(transaction.id);
+  }
+
+  return changed;
 }
 
 /** Cada item de ação com prazo vira uma tarefa no calendário. */

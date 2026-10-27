@@ -1611,6 +1611,10 @@ button {
   align-items: start;
 }
 
+.financial-charts-section {
+  align-items: stretch;
+}
+
 .calendar-layout {
   grid-template-columns: minmax(0, 1.7fr) minmax(340px, 1fr);
 }

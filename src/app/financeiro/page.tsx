@@ -978,7 +978,7 @@ export default function FinanceiroPage() {
         />
       </section>
 
-      <section className="section split" hidden={!visibleSections.has("charts")}>
+      <section className="section split financial-charts-section" hidden={!visibleSections.has("charts")}>
         <div className="card financial-performance-card">
           <div className="card-head">
             <div>
@@ -1006,7 +1006,7 @@ export default function FinanceiroPage() {
           ) : (
             <FinancialPerformanceChart
               points={data?.performanceSeries ?? []}
-              height={250}
+              height={320}
               onPointClick={(date, metric) => openFinancialDetails({ type: "chart-point", date, month: date.slice(0, 7), metric, report: "DRE", detailReport: "DRE", detailMonth: date.slice(0, 7) })}
             />
           )}
@@ -1541,14 +1541,21 @@ export default function FinanceiroPage() {
                     )}
                   </td>
                   <td>
-                    <button
-                      className={`pill ${transaction.status === "CONFIRMED" ? "green" : "amber"}`}
-                      onClick={() => toggleStatus(transaction)}
-                      title="Alternar situação"
-                    >
-                      {transaction.status === "CONFIRMED" ? <Check size={12} /> : null}
-                      {transaction.status === "CONFIRMED" ? "Confirmado" : "Pendente"}
-                    </button>
+                    {transaction.auto && (transaction.id.startsWith("auto_salary_") || transaction.id.startsWith("auto_agent_cost_")) ? (
+                      <span className={`pill ${transaction.status === "CONFIRMED" ? "green" : "amber"}`} title="Atualize este valor no perfil do integrante.">
+                        {transaction.status === "CONFIRMED" ? <Check size={12} /> : null}
+                        {transaction.status === "CONFIRMED" ? "Confirmado" : "Pendente"}
+                      </span>
+                    ) : (
+                      <button
+                        className={`pill ${transaction.status === "CONFIRMED" ? "green" : "amber"}`}
+                        onClick={() => toggleStatus(transaction)}
+                        title="Alternar situação"
+                      >
+                        {transaction.status === "CONFIRMED" ? <Check size={12} /> : null}
+                        {transaction.status === "CONFIRMED" ? "Confirmado" : "Pendente"}
+                      </button>
+                    )}
                   </td>
                   <td className="num" style={{ color: transaction.kind === "INCOME" ? "#4ade80" : "#ff8f7a" }}>
                     {transaction.kind === "INCOME" ? "+" : "−"} {brlExact(transaction.amount)}
